@@ -6,26 +6,36 @@ session_start();
 $db_file = 'data/relay_core.sqlite';
 
 if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
-    header("Location: console.php"); 
-    exit;
+    header("Location: console.php"); exit;
 }
 
 date_default_timezone_set('UTC'); 
+
+$terminal_patch = '
+<style>
+    .t-textarea { width: 100%; background: transparent; color: var(--t-green); border: 1px solid var(--t-green-dim); padding: 10px; font-family: var(--t-font); font-size: 14px; outline: none; margin-bottom: 15px; resize: vertical; transition: 0.2s; }
+    .t-textarea:focus { border-color: var(--t-green); box-shadow: 0 0 8px rgba(0, 255, 65, 0.2); }
+    .t-blink { animation: terminal-blink 1s linear infinite; }
+    @keyframes terminal-blink { 50% { opacity: 0; } }
+    
+    /* Modifikasi Chat Thread logic Relay */
+    .chat-thread { display: none; }
+    .chat-thread.active { display: flex; flex-direction: column; }
+    .empty-chat-state { text-align: center; opacity: 0.5; margin-top: 50px; }
+</style>
+';
 
 try {
     $db = new PDO("sqlite:" . $db_file);
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $db->setAttribute(PDO::ATTR_TIMEOUT, 5);
     
-    // Ambil pesan Direct
     $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'direct' ORDER BY timestamp ASC");
     $transmissions = $query->fetchAll(PDO::FETCH_ASSOC);
 
-    // Ambil Star Chart
     $query_stars = $db->query("SELECT * FROM following ORDER BY added_at DESC");
     $star_chart = $query_stars->fetchAll(PDO::FETCH_ASSOC);
 
-    // [ MESIN THREADING / CHAT BUBBLES ]
     $chat_threads = [];
     foreach ($transmissions as $msg) {
         $partner_domain = '';
@@ -39,9 +49,8 @@ try {
             $chat_threads[$partner_domain][] = $msg;
         }
     }
-
 } catch (PDOException $e) {
-    die("<h3 style='color:red;'>[ CRITICAL ERROR ] Core Memory Offline.</h3>");
+    die("<h3 class='t-alert danger'>[ CRITICAL ERROR ] Core Memory Offline.</h3>");
 }
 ?>
 
@@ -51,96 +60,75 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RELAY | Secure Comms</title>
-    <link rel="stylesheet" href="assets/style.css">
-    <style>
-        .status-dot { display: inline-block; width: 14px; height: 14px; background-color: #4af626; border-radius: 50%; margin-right: 10px; box-shadow: 0 0 10px #4af626; }
-        .dashboard-layout { display: flex; gap: 20px; align-items: flex-start; }
-        
-        .contact-list { flex: 1; min-width: 250px; max-height: 70vh; overflow-y: auto; }
-        .chat-area { flex: 2; min-width: 300px; display: flex; flex-direction: column; gap: 15px; }
-        
-        .contact-item { padding: 10px; border: 1px dashed var(--text-dim); cursor: pointer; margin-bottom: 10px; transition: 0.2s; }
-        .contact-item:hover, .contact-item.active { border-color: var(--alert); background: rgba(255, 42, 42, 0.1); color: var(--alert); }
-        
-        .chat-thread { display: none; flex-direction: column; gap: 10px; max-height: 50vh; overflow-y: auto; padding-right: 10px; }
-        .chat-thread.active { display: flex; }
-        
-        .bubble { max-width: 80%; padding: 10px 15px; border-radius: 8px; font-family: monospace; word-wrap: break-word; }
-        .bubble-me { align-self: flex-end; background: rgba(74, 246, 38, 0.1); border: 1px solid #4af626; color: #4af626; border-bottom-right-radius: 0; }
-        .bubble-them { align-self: flex-start; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--text-dim); color: var(--text-main); border-bottom-left-radius: 0; }
-        
-        .chat-time { font-size: 0.7em; opacity: 0.5; margin-top: 5px; display: block; }
-        .empty-chat-state { text-align: center; opacity: 0.5; margin-top: 50px; }
-
-        @media (max-width: 768px) { .dashboard-layout { flex-direction: column; } .chat-area { width: 100%; } }
-    </style>
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.css">
+    <?php echo $terminal_patch; ?>
 </head>
 <body>
 
-    <header style="margin-bottom: 30px; border-bottom: 2px solid var(--text-main); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding-bottom: 10px;">
-        <div>
-            <h1 style="margin-bottom: 5px; display: flex; align-items: center;"><span class="status-dot blink"></span>RELAY_STATION</h1>
-            <p style="margin-top: 0; font-size: 0.9em;">STATUS: <span style="color: #4af626;">ONLINE</span> | ENCRYPTION: ACTIVE | VER: 1.0.0-dev</p>
+    <nav class="t-navbar">
+        <div class="t-nav-brand"><span class="t-led-dot t-led-green"></span> RELAY_STATION <span style="font-size:10px; opacity:0.5;">v1.0.0</span></div>
+        <div class="t-nav-menu">
+            <a href="console.php?logout=true" class="t-btn danger" style="padding: 5px 10px;">> LOGOUT</a>
         </div>
-        <div style="display: flex; gap: 10px; align-items: center;">
-            <a href="console.php?logout=true" style="color: var(--alert); text-decoration: none; border: 1px solid var(--alert); padding: 5px 10px;">> LOGOUT</a>
-        </div>
-    </header>
+    </nav>
 
-    <div class="dashboard-layout">
+    <div class="t-grid-layout">
         
-        <aside class="contact-list">
-            <h2 style="color: var(--alert);">[ ✉️ INBOX ]</h2>
-            <div class="console-box" style="border-color: var(--text-dim);">
+        <aside class="t-side-panel" style="max-height: 80vh; overflow-y: auto;">
+            <h2 class="t-card-header">> ✉️ INBOX</h2>
+            <div class="t-list-group" style="margin-bottom: 20px;">
                 <?php if (empty($chat_threads)): ?>
-                    <p style="opacity: 0.5; font-size: 0.9em;">[ NO ACTIVE COMMS ]</p>
+                    <div class="t-list-item"><span class="t-list-item-subtitle">[ NO ACTIVE COMMS ]</span></div>
                 <?php else: ?>
                     <?php foreach (array_keys($chat_threads) as $domain): ?>
-                        <div class="contact-item" onclick="openChat('<?php echo htmlspecialchars($domain); ?>')">
-                            <strong>> <?php echo htmlspecialchars($domain); ?></strong>
-                        </div>
+                        <a href="javascript:void(0)" class="t-list-item contact-item" onclick="openChat('<?php echo htmlspecialchars($domain); ?>', this)">
+                            <span class="t-list-item-title">> <?php echo htmlspecialchars($domain); ?></span>
+                        </a>
                     <?php endforeach; ?>
                 <?php endif; ?>
-                
-                <div class="contact-item" style="border-color: var(--text-main); margin-top: 20px;" onclick="openChat('NEW')">
-                    <strong>+ [ NEW LASER LINK ]</strong>
-                </div>
+                <a href="javascript:void(0)" class="t-list-item contact-item" style="border-top: 1px dashed var(--t-green);" onclick="openChat('NEW', this)">
+                    <span class="t-list-item-title">+ [ NEW LASER LINK ]</span>
+                </a>
             </div>
             
-            <h2 style="margin-top: 30px;">[ 🧭 NAVIGATION ]</h2>
-            <div class="console-box" style="margin-bottom: 20px;">
-                <ul style="list-style: none; padding: 0; margin: 0; font-weight: bold;">
-                    <li style="margin-bottom: 15px;"><a href="console.php" style="color: var(--text-main); text-decoration: none;">> 🌐 TIMELINE</a></li>
-                    <li style="margin-bottom: 15px;"><span style="color: var(--alert);">> ✉️ DIRECT MESSAGES</span></li>
-                </ul>
+            <h2 class="t-card-header">> 🧭 NAVIGATION</h2>
+            <div class="t-list-group">
+                <a href="console.php" class="t-list-item">
+                    <span class="t-list-item-title">> 🌐 TIMELINE</span>
+                </a>
+                <a href="direct.php" class="t-list-item active" style="border-left-color: var(--t-red); color: var(--t-red);">
+                    <span class="t-list-item-title">> ✉️ DIRECT MESSAGES</span>
+                </a>
             </div>
         </aside>
 
-        <main class="chat-area">
-            <div class="console-box" style="border-color: var(--alert); min-height: 400px; display: flex; flex-direction: column; justify-content: space-between;">
+        <main class="t-main-panel">
+            <div class="t-card" style="border-color: var(--t-red); min-height: 400px; display: flex; flex-direction: column; justify-content: space-between;">
                 
                 <div id="empty-state" class="empty-chat-state">
-                    <h3>[ ENCRYPTED CHANNEL ]</h3>
-                    <p>Select a node from the Inbox to open communication channel.</p>
+                    <h3 style="color: var(--t-red);">> ENCRYPTED CHANNEL</h3>
+                    <p style="font-size: 12px;">Select a node from the Inbox to open communication channel.</p>
                 </div>
 
-                <div id="chat-container">
+                <div id="chat-container" class="t-chat-container" style="flex: 1; overflow-y: auto; padding-right: 10px;">
                     <?php foreach ($chat_threads as $domain => $messages): ?>
                         <div id="thread-<?php echo htmlspecialchars($domain); ?>" class="chat-thread">
-                            <h4 style="border-bottom: 1px dashed var(--text-dim); padding-bottom: 10px; margin-top: 0; color: var(--alert);">
+                            <div class="t-alert danger" style="padding: 5px; text-align: center; margin-bottom: 15px; font-weight: bold;">
                                 LINK ESTABLISHED: <?php echo htmlspecialchars($domain); ?>
-                            </h4>
+                            </div>
                             
                             <?php foreach ($messages as $msg): ?>
                                 <?php if ($msg['is_remote'] == 0): ?>
-                                    <div class="bubble bubble-me">
+                                    <div class="t-bubble t-bubble-me">
+                                        <span class="t-bubble-meta">[ <?php echo $msg['timestamp']; ?> UTC ] <?php if($msg['expiry_date']) echo '👻'; ?> : YOU</span>
                                         <?php echo nl2br(htmlspecialchars($msg['content'])); ?>
-                                        <span class="chat-time"><?php echo $msg['timestamp']; ?> UTC <?php if($msg['expiry_date']) echo '👻'; ?></span>
                                     </div>
                                 <?php else: ?>
-                                    <div class="bubble bubble-them">
+                                    <div class="t-bubble t-bubble-them">
+                                        <span class="t-bubble-meta">SENDER: <?php echo htmlspecialchars($msg['author_alias']); ?> [ <?php echo $msg['timestamp']; ?> UTC ] <?php if($msg['expiry_date']) echo '👻'; ?></span>
                                         <?php echo nl2br(htmlspecialchars($msg['content'])); ?>
-                                        <span class="chat-time"><?php echo $msg['timestamp']; ?> UTC <?php if($msg['expiry_date']) echo '👻'; ?></span>
                                     </div>
                                 <?php endif; ?>
                             <?php endforeach; ?>
@@ -148,65 +136,63 @@ try {
                     <?php endforeach; ?>
                 </div>
 
-                <form action="core/transmitter.php" method="POST" id="reply-form" style="display: none; margin-top: 20px; border-top: 1px dashed var(--alert); padding-top: 15px;">
+                <form action="core/transmitter.php" method="POST" id="reply-form" style="display: none; margin-top: 20px; border-top: 1px dashed var(--t-red); padding-top: 15px;">
                     <input type="hidden" name="visibility" value="direct">
-                    <input type="url" id="target-input" name="target_planet" placeholder="Target URL (e.g., https://node.com)" required style="width: 100%; box-sizing: border-box; margin-bottom: 10px; padding: 10px; background: transparent; border: 1px solid var(--alert); color: var(--text-main); font-family: monospace;">
-                    <textarea name="content" rows="2" style="width: 100%; box-sizing: border-box; background: transparent; border: 1px solid var(--alert); color: var(--text-main); padding: 10px; font-family: monospace;" placeholder="Transmit classified message..." required></textarea>
+                    <input type="url" id="target-input" class="t-input" name="target_planet" placeholder="Target URL (e.g., https://node.com)" required style="border-color: var(--t-red); color: var(--t-red);">
+                    <textarea name="content" rows="2" class="t-textarea" placeholder="Transmit classified message..." required style="border-color: var(--t-red); color: var(--t-red);"></textarea>
 
-                    <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
-                        <label style="color: var(--alert); font-size: 0.9em; cursor: pointer;">
-                            <input type="checkbox" name="ghost_protocol" value="1"> 
-                            [ 👻 24H PURGE ]
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                        <label class="t-checkbox-label" style="margin:0; color: var(--t-red);">
+                            <input type="checkbox" name="ghost_protocol" value="1"><span class="t-checkmark"></span> [ 👻 24H PURGE ]
                         </label>
-                        <button type="submit" style="padding: 5px 15px; cursor: pointer; font-weight: bold; font-family: monospace; color: var(--alert); border-color: var(--alert);">[ FIRE LASER ]</button>
+                        <button type="submit" class="t-btn danger">[ FIRE LASER ]</button>
                     </div>
                 </form>
 
             </div>
         </main>
         
-        <aside class="contact-list" style="flex: 1; min-width: 250px;">
-             <h2>[ 🗺️ STAR_CHART ]</h2>
-            <div class="console-box" style="margin-bottom: 10px;">
+        <aside class="t-side-panel">
+            <h2 class="t-card-header">> 🗺️ STAR_CHART</h2>
+            <div class="t-card" style="padding: 10px;">
                 <?php if(isset($_GET['error']) && $_GET['error'] == 'invalid_node'): ?>
-                    <div style="color: var(--bg-color); background-color: var(--alert); padding: 5px; margin-bottom: 10px; font-size: 0.8em; text-align: center; font-weight: bold;">
-                        [!] SIGNAL LOST: Target is not a valid node.
-                    </div>
+                    <div class="t-alert danger" style="padding: 5px; margin-bottom: 10px; font-size: 11px;">[!] SIGNAL LOST: Invalid Node.</div>
                 <?php endif; ?>
                 <?php if(isset($_GET['status']) && $_GET['status'] == 'node_locked'): ?>
-                    <div style="color: var(--bg-color); background-color: #4af626; padding: 5px; margin-bottom: 10px; font-size: 0.8em; text-align: center; font-weight: bold;">
-                        [✓] NODE LOCKED.
-                    </div>
+                    <div class="t-alert" style="padding: 5px; margin-bottom: 10px; font-size: 11px; border-color: var(--t-green);">[✓] NODE LOCKED.</div>
                 <?php endif; ?>
 
                 <form action="core/add_planet.php" method="POST">
-                    <input type="url" name="planet_url" placeholder="https://domain.com" required style="width: 100%; box-sizing: border-box; margin-bottom: 10px; padding: 10px; background: transparent; border: 1px solid var(--text-main); color: var(--text-main); font-family: monospace;">
-                    <button type="submit" style="width: 100%; box-sizing: border-box; font-size: 0.9em; padding: 10px; cursor: pointer; font-weight: bold; font-family: monospace;">[ FOLLOW NODE ]</button>
+                    <input type="url" name="planet_url" class="t-input" placeholder="https://domain.com" required>
+                    <button type="submit" class="t-btn" style="width: 100%;">[ FOLLOW ]</button>
                 </form>
             </div>
             
-            <div class="console-box" style="border-color: var(--text-dim);">
-                <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.9em; word-wrap: break-word;">
-                    <?php if (empty($star_chart)): ?>
-                        <li style="opacity: 0.5;">[ NO NODES FOLLOWED ]</li>
-                    <?php else: ?>
-                        <?php foreach ($star_chart as $star): ?>
-                            <li style="margin-bottom: 5px; border-bottom: 1px dashed var(--text-dim); padding-bottom: 5px;">
-                                <strong style="color: var(--text-main);"><?php echo htmlspecialchars($star['alias']); ?></strong><br>
-                                <span style="font-size: 0.8em; opacity: 0.7;"><?php echo htmlspecialchars($star['planet_url']); ?></span>
-                            </li>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </ul>
+            <div class="t-list-group">
+                <?php if (empty($star_chart)): ?>
+                    <div class="t-list-item"><span class="t-list-item-subtitle">[ NO NODES ]</span></div>
+                <?php else: ?>
+                    <?php foreach ($star_chart as $star): ?>
+                        <div class="t-list-item" style="cursor: default; padding: 10px;">
+                            <span class="t-list-item-title" style="font-size: 12px;"><?php echo htmlspecialchars($star['alias']); ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </div>
         </aside>
 
     </div>
 
+    <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
-        function openChat(domain) {
+        function openChat(domain, element) {
             document.getElementById('empty-state').style.display = 'none';
             document.getElementById('reply-form').style.display = 'block';
+            
+            // Atur class active di list
+            let items = document.querySelectorAll('.contact-item');
+            items.forEach(i => i.classList.remove('active'));
+            element.classList.add('active');
             
             var threads = document.getElementsByClassName('chat-thread');
             for (var i = 0; i < threads.length; i++) {
@@ -222,7 +208,9 @@ try {
                 var activeThread = document.getElementById('thread-' + domain);
                 if(activeThread) {
                     activeThread.classList.add('active');
-                    activeThread.scrollTop = activeThread.scrollHeight;
+                    // Scroll ke paling bawah
+                    var container = document.getElementById('chat-container');
+                    container.scrollTop = container.scrollHeight;
                 }
             }
         }
