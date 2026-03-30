@@ -1,0 +1,71 @@
+/* RELAY STATION - TERMINAL THEME */
+:root {
+    --bg-color: #0a0a0a;
+    --text-main: #4af626; /* Phosphor Green */
+    --text-dim: #2b8a18;
+    --alert: #ff2a2a;
+    --font-mono: 'Courier New', Courier, monospace;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    font-family: var(--font-mono);
+    margin: 0;
+    padding: 20px;
+    line-height: 1.6;
+}
+
+/* Efek Scanline & Glow Khas Monitor CRT */
+body::before {
+    content: " ";
+    display: block;
+    position: fixed;
+    top: 0; left: 0; bottom: 0; right: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    z-index: 2;
+    background-size: 100% 2px, 3px 100%;
+    pointer-events: none;
+}
+
+h1, h2, h3 {
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--text-dim);
+    padding-bottom: 5px;
+    text-shadow: 0 0 5px var(--text-main);
+}
+
+.console-box {
+    border: 1px solid var(--text-main);
+    padding: 15px;
+    background: rgba(74, 246, 38, 0.05);
+    margin-bottom: 20px;
+}
+
+input, textarea, button {
+    background: transparent;
+    border: 1px solid var(--text-main);
+    color: var(--text-main);
+    font-family: var(--font-mono);
+    padding: 10px;
+}
+
+button {
+    cursor: pointer;
+    text-transform: uppercase;
+    font-weight: bold;
+    transition: all 0.2s;
+}
+
+button:hover {
+    background: var(--text-main);
+    color: var(--bg-color);
+}
+
+.blink {
+    animation: blinker 1s linear infinite;
+}
+
+@keyframes blinker {
+    50% { opacity: 0; }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "RELAY STATION",
+  "short_name": "RELAY",
+  "description": "Secure Decentralized Communication Node",
+  "start_url": "./console.php",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/814/814513.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
