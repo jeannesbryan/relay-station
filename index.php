@@ -22,34 +22,35 @@ try {
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.css">
-    
-    <style>
-        .t-blink { animation: terminal-blink 1s linear infinite; }
-        @keyframes terminal-blink { 50% { opacity: 0; } }
-    </style>
 </head>
-<body>
+<body class="t-crt">
 
-    <div class="t-container">
-        <header style="text-align: center; margin-bottom: 40px; border-bottom: 2px dashed var(--t-green-dim); padding-bottom: 20px;">
-            <h1 style="border: none; margin-bottom: 5px;"><span class="t-blink">_</span>RELAY_STATION</h1>
-            <p style="color: var(--t-green-dim); margin-top: 0; font-size: 12px;">COORDINATES: relay.npc.my.id | <span class="t-led-dot t-led-green"></span> COMMANDER: ONLINE</p>
+    <div id="splash-overlay" class="t-splash">
+        <div class="font-bold text-success" id="splash-text" style="font-size: 1.1rem; letter-spacing: 2px; text-shadow: 0 0 8px currentColor;">
+            > INTERCEPTING_PUBLIC_HOLOGRAM<span class="t-loading-dots"></span>
+        </div>
+    </div>
+
+    <div class="t-container mt-4">
+        <header class="text-center mb-5 t-border-bottom pb-4">
+            <h1 class="mb-1 text-success"><span class="t-blink">_</span>RELAY_STATION</h1>
+            <p class="text-muted m-0 fs-small">COORDINATES: relay.npc.my.id | <span class="t-led-dot t-led-green"></span> COMMANDER: ONLINE</p>
         </header>
 
         <main>
-            <h3 style="color: var(--t-green-dim); border: none; font-size: 14px; margin-bottom: 15px;">> PUBLIC_BROADCAST_LOG:</h3>
+            <h3 class="text-success mb-3">> PUBLIC_BROADCAST_LOG:</h3>
             
             <?php if (empty($transmissions)): ?>
-                <div class="t-card" style="text-align: center; opacity: 0.5;">
-                    <p>[ ARSIP KOSONG. KAPTEN BELUM MEMANCARKAN SINYAL. ]</p>
+                <div class="t-card text-center text-muted p-5" style="border-style: dashed;">
+                    <p class="m-0">[ ARSIP KOSONG. KAPTEN BELUM MEMANCARKAN SINYAL. ]</p>
                 </div>
             <?php else: ?>
                 <?php foreach ($transmissions as $msg): ?>
-                    <div class="t-card" style="margin-bottom: 15px;">
-                        <span class="t-bubble-meta">
-                            [ <?php echo $msg['timestamp']; ?> UTC ] <strong style="color: #fff;"><?php echo htmlspecialchars($msg['author_alias'] ?? 'COMMANDER'); ?></strong>
+                    <div class="t-card mb-3">
+                        <span class="t-bubble-meta t-border-bottom pb-2 mb-2">
+                            [ <?php echo $msg['timestamp']; ?> UTC ] <strong class="text-success"><?php echo htmlspecialchars($msg['author_alias'] ?? 'COMMANDER'); ?></strong>
                         </span>
-                        <p style="margin-top: 10px; font-size: 14px;">
+                        <p class="m-0" style="font-size: 14px;">
                             <?php echo nl2br(htmlspecialchars($msg['content'])); ?>
                         </p>
                     </div>
@@ -57,11 +58,12 @@ try {
             <?php endif; ?>
         </main>
 
-        <footer style="text-align: center; margin-top: 50px; opacity: 0.5; font-size: 12px;">
-            <p>POWERED BY <a href="https://github.com/jeannesbryan/relay-station" style="color: var(--t-green);">RELAY PROTOCOL</a></p>
-            <a href="console.php" style="color: var(--bg-base);">[ SYSADMIN ]</a>
+        <footer class="text-center mt-5 text-muted fs-small t-border-top pt-4">
+            <p class="mb-2">POWERED BY <a href="https://github.com/jeannesbryan/relay-station" class="text-success font-bold" style="text-decoration: none;">RELAY PROTOCOL</a></p>
+            <a href="console.php" class="text-muted" style="text-decoration: none;">[ SYSADMIN_LOGIN ]</a>
         </footer>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
 </body>
 </html>
