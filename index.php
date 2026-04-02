@@ -1,11 +1,42 @@
 <?php
-// RELAY STATION: PUBLIC HOLOGRAM
+// RELAY STATION: PUBLIC HOLOGRAM (FEDIVERSE EDITION V3.0)
+// Wajah stasiun untuk pengunjung publik (Read-Only)
+
 $db_file = 'data/relay_core.sqlite';
 
 try {
     $db = new PDO("sqlite:" . $db_file);
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'public' AND is_remote = 0 ORDER BY timestamp DESC LIMIT 50");
+    
+    // ==========================================
+    // 🔄 [ AJAX ENDPOINT: CURSOR-BASED PAGINATION ]
+    // ==========================================
+    if (isset($_GET['last_id'])) {
+        $last_id = (int)$_GET['last_id'];
+        // Mengambil pesan yang ID-nya lebih kecil (lebih lama) dari pesan terakhir di layar
+        $stmt = $db->prepare("SELECT * FROM transmissions WHERE visibility = 'public' AND is_remote = 0 AND id < :last_id ORDER BY id DESC LIMIT 15");
+        $stmt->execute([':last_id' => $last_id]);
+        $transmissions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        foreach ($transmissions as $msg) {
+            // [ BUG FIX 1 ]: Bebas dari double escaping
+            $content = nl2br($msg['content']);
+            $img = !empty($msg['media_url']) ? '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" alt="Broadcast Media" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>' : '';
+            
+            // [ BUG FIX 3 ]: Tambahkan class 'transmission-card' dan atribut 'data-id'
+            echo "<div class='t-card mb-3 transmission-card' data-id='{$msg['id']}'>
+                    <span class='t-bubble-meta t-border-bottom pb-2 mb-2 d-block'>
+                        [ {$msg['timestamp']} UTC ] <strong class='text-success'>" . htmlspecialchars($msg['author_alias'] ?? 'COMMANDER') . "</strong>
+                    </span>
+                    <p class='m-0' style='font-size: 14px;'>$content</p>
+                    $img
+                  </div>";
+        }
+        exit;
+    }
+    // ==========================================
+
+    $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'public' AND is_remote = 0 ORDER BY id DESC LIMIT 15");
     $transmissions = $query->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     die("<h3 class='t-alert danger'>[ SIGNAL LOST ] Stasiun sedang dalam perbaikan.</h3>");
@@ -17,7 +48,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RELAY | npc.my.id</title>
+    <title>RELAY | Public Hologram</title>
     
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -35,9 +66,10 @@ try {
         <header class="text-center mb-5 t-border-bottom pb-4">
             <h1 class="mb-1 text-success"><span class="t-blink">_</span>RELAY_STATION</h1>
             <p class="text-muted m-0 fs-small">COORDINATES: relay.npc.my.id | <span class="t-led-dot t-led-green"></span> COMMANDER: ONLINE</p>
+            <div class="mt-2 text-warning fs-small">> FEDIVERSE EDITION v3.0</div>
         </header>
 
-        <main>
+        <main id="signal-log">
             <h3 class="text-success mb-3">> PUBLIC_BROADCAST_LOG:</h3>
             
             <?php if (empty($transmissions)): ?>
@@ -46,24 +78,69 @@ try {
                 </div>
             <?php else: ?>
                 <?php foreach ($transmissions as $msg): ?>
-                    <div class="t-card mb-3">
-                        <span class="t-bubble-meta t-border-bottom pb-2 mb-2">
+                    <div class="t-card mb-3 transmission-card" data-id="<?php echo $msg['id']; ?>">
+                        <span class="t-bubble-meta t-border-bottom pb-2 mb-2 d-block">
                             [ <?php echo $msg['timestamp']; ?> UTC ] <strong class="text-success"><?php echo htmlspecialchars($msg['author_alias'] ?? 'COMMANDER'); ?></strong>
                         </span>
                         <p class="m-0" style="font-size: 14px;">
-                            <?php echo nl2br(htmlspecialchars($msg['content'])); ?>
+                            <?php echo nl2br($msg['content']); ?>
                         </p>
+
+                        <?php if(!empty($msg['media_url'])): ?>
+                            <div class="mt-3 text-center">
+                                <img src="<?php echo htmlspecialchars($msg['media_url']); ?>" alt="Broadcast Media" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;">
+                            </div>
+                        <?php endif; ?>
                     </div>
                 <?php endforeach; ?>
             <?php endif; ?>
         </main>
 
-        <footer class="text-center mt-5 text-muted fs-small t-border-top pt-4">
+        <?php if (!empty($transmissions)): ?>
+            <div id="load-more" class="text-center mt-3 text-muted" style="border-top:1px dashed var(--t-green); padding-top:15px; padding-bottom:30px;">
+                [ SCROLL DOWN TO SCAN DEEP SPACE ]
+            </div>
+        <?php endif; ?>
+
+        <footer class="text-center mt-5 text-muted fs-small t-border-top pt-4 mb-4">
             <p class="mb-2">POWERED BY <a href="https://github.com/jeannesbryan/relay-station" class="text-success font-bold" style="text-decoration: none;">RELAY PROTOCOL</a></p>
             <a href="console.php" class="text-muted" style="text-decoration: none;">[ SYSADMIN_LOGIN ]</a>
         </footer>
     </div>
 
     <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
+    <script>
+        // 🔄 [ BUG FIX 3: CURSOR-BASED INFINITE SCROLL ]
+        let isFetching = false;
+        const loadMoreEl = document.getElementById('load-more');
+        
+        if (loadMoreEl) {
+            const observer = new IntersectionObserver((entries) => {
+                if(entries[0].isIntersecting && !isFetching) {
+                    isFetching = true;
+                    loadMoreEl.innerText = '[ RECEIVING SIGNALS... ]';
+                    
+                    // Cari ID dari pesan terakhir di layar
+                    const cards = document.querySelectorAll('.transmission-card');
+                    if (cards.length === 0) return;
+                    const lastId = cards[cards.length - 1].getAttribute('data-id');
+
+                    fetch('index.php?last_id=' + lastId)
+                    .then(r => r.text())
+                    .then(html => {
+                        if(html.trim() !== '') {
+                            document.getElementById('signal-log').insertAdjacentHTML('beforeend', html);
+                            isFetching = false;
+                            loadMoreEl.innerText = '[ SCROLL DOWN TO SCAN ]';
+                        } else {
+                            loadMoreEl.innerText = '[ END OF TRANSMISSIONS ]';
+                            observer.disconnect();
+                        }
+                    });
+                }
+            });
+            observer.observe(loadMoreEl);
+        }
+    </script>
 </body>
 </html>

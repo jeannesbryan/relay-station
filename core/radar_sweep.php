@@ -19,16 +19,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $expiry_date = date('Y-m-d H:i:s', strtotime('+24 hours'));
     }
 
-    // 3. Identifikasi Koordinat Lokal Kapten (Subfolder Agnostic)
+    // 3. Identifikasi Koordinat Lokal Kapten
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
-    $host = $_SERVER['HTTP_HOST'];
-    
-    // Melacak path folder dinamis (karena script ini ada di /core/, kita harus naik 1 level)
-    $script_path = dirname($_SERVER['SCRIPT_NAME']); // misal: /relay/core atau /core
-    $base_path = dirname($script_path); // Naik ke: /relay atau /
-    if ($base_path === '/' || $base_path === '\\') $base_path = ''; // Bersihkan jika instalasi di Root
-    
-    $my_planet_url = $protocol . $host . $base_path;
+    $my_planet_url = $protocol . $_SERVER['HTTP_HOST'];
     $author_alias = 'LOCAL_COMMAND'; 
     
     // Cegah tembakan kosong
@@ -39,43 +32,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // ==========================================
-    // 🖼️ [ FEDIVERSE MEDIA PROCESSING V3 ]
+    // 🖼️ [ FEDIVERSE MEDIA PROCESSING ]
     // ==========================================
     $media_url = null;
-    $upload_dir = '../media/';
-    
-    // Buat direktori jika belum ada (Failsafe)
-    if (!is_dir($upload_dir)) {
-        mkdir($upload_dir, 0755, true);
-    }
-    
-    // 🖼️ PRIORITAS 1: Tangkap gambar hasil kompresi (Base64) dari JavaScript
-    if (!empty($_POST['media_base64'])) {
-        $base64_string = $_POST['media_base64'];
-        
-        // 🛡️ [ SANITY CHECK ] Cegah peretas mengirim string palsu yang menyebabkan file sampah
-        if (strpos($base64_string, ';base64,') !== false) {
-            list($type, $data) = explode(';', $base64_string);
-            list(, $data)      = explode(',', $data);
-            $decoded = base64_decode($data);
-            $filename = uniqid('sig_') . '.webp'; // Selalu WebP karena dikompresi di client
-            
-            // Simpan gambar secara fisik di server LOKAL (Sovereign Storage)
-            if (file_put_contents($upload_dir . $filename, $decoded)) {
-                $media_url = rtrim($my_planet_url, '/') . '/media/' . $filename;
-            }
+    if (isset($_FILES['media']) && $_FILES['media']['error'] === UPLOAD_ERR_OK) {
+        $upload_dir = '../media/';
+        // Buat direktori jika belum ada (Failsafe)
+        if (!is_dir($upload_dir)) {
+            mkdir($upload_dir, 0755, true);
         }
-    } 
-    // 🖼️ PRIORITAS 2: Fallback ke Native Upload
-    elseif (isset($_FILES['media']) && $_FILES['media']['error'] === UPLOAD_ERR_OK) {
+        
         $file_ext = strtolower(pathinfo($_FILES['media']['name'], PATHINFO_EXTENSION));
         $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
         
         if (in_array($file_ext, $allowed_ext)) {
+            // Generate nama file unik
             $filename = uniqid('sig_') . '.' . $file_ext;
             $target_file = $upload_dir . $filename;
             
+            // Simpan gambar secara fisik di server LOKAL (Sovereign Storage)
             if (move_uploaded_file($_FILES['media']['tmp_name'], $target_file)) {
+                // Rakit URL absolut untuk dikirim ke Fediverse
                 $media_url = rtrim($my_planet_url, '/') . '/media/' . $filename;
             }
         }

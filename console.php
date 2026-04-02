@@ -28,7 +28,6 @@ if (isset($_GET['logout'])) {
     header("Location: index.php"); exit;
 }
 
-// --- LAYAR LOGIN ---
 if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     echo '<!DOCTYPE html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1.0">';
     echo '<title>RESTRICTED - Relay</title>';
@@ -48,7 +47,6 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     echo '<script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>';
     echo '</body></html>'; exit;
 }
-// ==========================================
 
 date_default_timezone_set('UTC'); 
 
@@ -57,10 +55,54 @@ try {
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $db->setAttribute(PDO::ATTR_TIMEOUT, 5);
     
+    // 🧹 [ FAST GARBAGE COLLECTOR O(N) ]
+    $media_files = glob('media/*');
+    if ($media_files) {
+        $active_media = $db->query("SELECT media_url FROM transmissions WHERE media_url IS NOT NULL")->fetchAll(PDO::FETCH_COLUMN);
+        $active_filenames = array_map('basename', $active_media);
+        
+        $physical_files = [];
+        foreach ($media_files as $file) {
+            if (is_file($file)) { $physical_files[] = basename($file); }
+        }
+        
+        $orphans = array_diff($physical_files, $active_filenames);
+        foreach ($orphans as $orphan) { @unlink('media/' . $orphan); }
+    }
+    
     $db->exec("DELETE FROM transmissions WHERE expiry_date IS NOT NULL AND expiry_date <= CURRENT_TIMESTAMP");
     $db->exec("DELETE FROM transmissions WHERE visibility = 'public' AND is_remote = 1 AND timestamp <= datetime('now', '-30 days')");
     
-    $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'public' ORDER BY timestamp DESC LIMIT 50");
+    // ==========================================
+    // 🔄 [ AJAX ENDPOINT: CURSOR-BASED PAGINATION ]
+    // ==========================================
+    if (isset($_GET['last_id'])) {
+        $last_id = (int)$_GET['last_id'];
+        $stmt = $db->prepare("SELECT * FROM transmissions WHERE visibility = 'public' AND id < :last_id ORDER BY id DESC LIMIT 15");
+        $stmt->execute([':last_id' => $last_id]);
+        $transmissions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        foreach ($transmissions as $msg) {
+            $author = htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN');
+            $ghost = !empty($msg['expiry_date']) ? '<span class="t-badge danger t-flicker">[ 👻 GHOSTED ]</span>' : '';
+            $src = $msg['is_remote'] ? 'INCOMING FROM:' : 'LOCAL_AUTHOR:';
+            // [ BUG FIX 1 ]: Bebas dari double escaping
+            $content = nl2br($msg['content']);
+            $img = !empty($msg['media_url']) ? '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>' : '';
+            
+            // [ BUG FIX 3 ]: Tambahkan class 'transmission-card' dan atribut 'data-id'
+            echo "<div class='t-card mb-3 p-3 transmission-card' data-id='{$msg['id']}'>
+                    <div class='t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap'>
+                        <span>[ {$msg['timestamp']} UTC ] $src <strong class='text-success'>$author</strong></span> $ghost
+                    </div>
+                    <p class='m-0' style='font-size: 14px;'>$content</p> $img
+                  </div>";
+        }
+        exit;
+    }
+    // ==========================================
+    
+    $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'public' ORDER BY id DESC LIMIT 15");
     $transmissions = $query->fetchAll(PDO::FETCH_ASSOC);
 
     $query_stars = $db->query("SELECT * FROM following ORDER BY added_at DESC");
@@ -94,7 +136,7 @@ try {
 
     <div class="t-container-fluid pt-0">
         <nav class="t-navbar mt-3 mb-4">
-            <div class="t-nav-brand"><span class="t-led-dot t-led-green"></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">v1.0.0</span></div>
+            <div class="t-nav-brand"><span class="t-led-dot t-led-green"></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">v3.0 FEDIVERSE</span></div>
             <div class="t-nav-menu">
                 <button id="installAppBtn" class="t-btn t-btn-sm">[ INSTALL PWA ]</button>
                 <a href="console.php?logout=true" class="t-btn danger t-btn-sm">> LOGOUT</a>
@@ -107,9 +149,17 @@ try {
                 <h2 class="t-card-header">> 🌐 PUBLIC TIMELINE</h2>
                 
                 <div class="t-card">
-                    <form action="core/transmitter.php" method="POST" class="m-0" id="broadcast-form">
+                    <form action="core/transmitter.php" method="POST" enctype="multipart/form-data" class="m-0" id="broadcast-form">
                         <input type="hidden" name="visibility" value="public">
+                        
+                        <input type="hidden" name="media_base64" id="media-base64">
+                        
                         <textarea name="content" rows="3" class="t-textarea" placeholder="> What's happening in your sector?" required></textarea>
+
+                        <div class="mb-3 mt-2 d-flex align-items-center gap-2">
+                            <input type="file" id="media-input" name="media" accept="image/*" class="t-input m-0" style="padding: 6px; flex-grow:1;">
+                            <span id="compress-status" class="fs-small text-warning font-bold"></span>
+                        </div>
 
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <label class="t-checkbox-label text-danger m-0">
@@ -125,7 +175,7 @@ try {
                         <div class="text-center text-muted py-4 t-border border-dashed">[ TIMELINE IS EMPTY ]</div>
                     <?php else: ?>
                         <?php foreach ($transmissions as $msg): ?>
-                            <div class="t-card mb-3 p-3">
+                            <div class="t-card mb-3 p-3 transmission-card" data-id="<?php echo $msg['id']; ?>">
                                 <div class="t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap">
                                     <span>
                                         [ <?php echo $msg['timestamp']; ?> UTC ] 
@@ -135,12 +185,25 @@ try {
                                     <?php if(!empty($msg['expiry_date'])) echo '<span class="t-badge danger t-flicker">[ 👻 GHOSTED ]</span>'; ?>
                                 </div>
                                 <p class="m-0" style="font-size: 14px;">
-                                    <?php echo nl2br(htmlspecialchars($msg['content'])); ?>
+                                    <?php echo nl2br($msg['content']); ?>
                                 </p>
+                                
+                                <?php if(!empty($msg['media_url'])): ?>
+                                    <div class="mt-3 text-center">
+                                        <img src="<?php echo htmlspecialchars($msg['media_url']); ?>" alt="Transmission Media" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;">
+                                    </div>
+                                <?php endif; ?>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </div>
+
+                <?php if (!empty($transmissions)): ?>
+                    <div id="load-more" class="text-center mt-3 text-muted" style="border-top:1px dashed var(--t-green); padding-top:15px; padding-bottom:30px;">
+                        [ SCROLL DOWN TO SCAN DEEP SPACE ]
+                    </div>
+                <?php endif; ?>
+
             </main>
 
             <aside class="t-side-panel">
@@ -157,8 +220,11 @@ try {
                     </a>
                 </div>
 
-                <h2 class="t-card-header">> 🗺️ STAR_CHART</h2>
-                <div class="t-card p-2 mb-3">
+                <h2 class="t-card-header d-flex justify-content-between align-items-center">
+                    > 🗺️ STAR_CHART
+                    <button onclick="runRadarSweep()" id="btn-sweep" class="t-btn warning t-btn-sm" title="Ping All Nodes">[ PING ALL ]</button>
+                </h2>
+                <div class="t-card p-2 mb-3 mt-3">
                     <?php if(isset($_GET['error']) && $_GET['error'] == 'invalid_node'): ?>
                         <div class="t-alert danger p-2 mb-2 fs-small">[!] SIGNAL LOST: Invalid Node.</div>
                     <?php endif; ?>
@@ -199,6 +265,74 @@ try {
         window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; installBtn.style.display = 'inline-block'; });
         installBtn.addEventListener('click', async () => { if (deferredPrompt !== null) { deferredPrompt.prompt(); const { outcome } = await deferredPrompt.userChoice; if (outcome === 'accepted') { installBtn.style.display = 'none'; } deferredPrompt = null; } });
         window.addEventListener('appinstalled', () => { installBtn.style.display = 'none'; });
+
+        // 🖼️ 1. CLIENT-SIDE IMAGE COMPRESSION (CANVAS)
+        const mediaInput = document.getElementById('media-input');
+        if (mediaInput) {
+            mediaInput.addEventListener('change', function(e) {
+                const file = e.target.files[0]; if(!file) return;
+                document.getElementById('compress-status').innerText = 'COMPRESSING...';
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width; let height = img.height;
+                        if(width > 1080) { height = Math.round(height * 1080 / width); width = 1080; } 
+                        canvas.width = width; canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        document.getElementById('media-base64').value = canvas.toDataURL('image/webp', 0.8); 
+                        document.getElementById('compress-status').innerText = '[ COMPRESSED WEBP ]';
+                    }
+                    img.src = event.target.result;
+                }
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // 🔄 [ BUG FIX 3: CURSOR-BASED INFINITE SCROLL ]
+        let isFetching = false;
+        const loadMoreEl = document.getElementById('load-more');
+        
+        if (loadMoreEl) {
+            const observer = new IntersectionObserver((entries) => {
+                if(entries[0].isIntersecting && !isFetching) {
+                    isFetching = true;
+                    loadMoreEl.innerText = '[ RECEIVING SIGNALS... ]';
+                    
+                    // Cari ID dari pesan terakhir di layar
+                    const cards = document.querySelectorAll('.transmission-card');
+                    if (cards.length === 0) return;
+                    const lastId = cards[cards.length - 1].getAttribute('data-id');
+
+                    fetch('console.php?last_id=' + lastId)
+                    .then(r => r.text())
+                    .then(html => {
+                        if(html.trim() !== '') {
+                            document.getElementById('signal-log').insertAdjacentHTML('beforeend', html);
+                            isFetching = false;
+                            loadMoreEl.innerText = '[ SCROLL DOWN TO SCAN ]';
+                        } else {
+                            loadMoreEl.innerText = '[ END OF TRANSMISSIONS ]';
+                            observer.disconnect();
+                        }
+                    });
+                }
+            });
+            observer.observe(loadMoreEl);
+        }
+
+        // 📡 RADAR SWEEP (PING ALL)
+        function runRadarSweep() {
+            const btn = document.getElementById('btn-sweep');
+            btn.innerText = '[ PINGING... ]'; btn.disabled = true;
+            fetch('core/radar_sweep.php').then(r => r.text()).then(res => {
+                Terminal.toast(res, 'warning');
+                setTimeout(() => location.reload(), 2000); 
+            });
+        }
     </script>
 </body>
 </html>

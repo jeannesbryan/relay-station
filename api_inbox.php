@@ -1,6 +1,6 @@
 <?php
-// RELAY STATION: ATMOSPHERIC SHIELD & INBOX
-// Endpoint untuk menerima sinyal (POST) dari planet lain, dilengkapi Firewall Anti-Spam.
+// RELAY STATION: ATMOSPHERIC SHIELD & INBOX (V3.0 - SECURE RATE LIMITED)
+// Endpoint untuk menerima sinyal (POST) dari planet lain, dilengkapi Firewall Anti-Spam dan Anti-Spoofing.
 
 header('Content-Type: application/json');
 date_default_timezone_set('UTC'); // Waktu kosmik standar
@@ -26,15 +26,27 @@ $content = trim($signal['content']);
 $author = trim($signal['author_alias']);
 $from_planet = trim($signal['from_planet']);
 $visibility = $signal['visibility'] ?? 'public';
-
-// 👻 [ SENSOR GHOST PROTOCOL ] 
 $expiry_date = $signal['expiry_date'] ?? null; 
+$media_url = !empty($signal['media_url']) ? trim($signal['media_url']) : null;
+
+// 🕵️ [ ANTI-SPOOFING ] Tangkap IP Fisik Pengirim (Mendukung Cloudflare/Proxy)
+$sender_ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN';
 
 $db_file = 'data/relay_core.sqlite';
 
 try {
     $db = new PDO("sqlite:" . $db_file);
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+    // ==========================================
+    // 🛠️ [ AUTO-UPGRADE SCHEMA ]
+    // Menambahkan kolom sender_ip tanpa perlu hapus database lama
+    // ==========================================
+    try {
+        $db->exec("ALTER TABLE transmissions ADD COLUMN sender_ip TEXT DEFAULT NULL");
+    } catch (PDOException $e) {
+        // Abaikan jika kolom sudah ada
+    }
 
     // ==========================================
     // 🛡️ [ FIREWALL ANTI-SPAM (STAR CHART CHECK) ]
@@ -56,18 +68,31 @@ try {
         ]);
         exit; // Tolak pendaratan, jangan simpan ke SQLite!
     }
+
+    // 🛑 [ TRUE RATE LIMITING (BY IP) ] Maksimal 5 pesan per menit dari IP yang sama
+    $stmt_rl = $db->prepare("SELECT COUNT(*) FROM transmissions WHERE sender_ip = :ip AND timestamp >= datetime('now', '-1 minute')");
+    $stmt_rl->execute([':ip' => $sender_ip]);
+    
+    if ($stmt_rl->fetchColumn() >= 5) {
+        http_response_code(429);
+        echo json_encode(['status' => 'error', 'message' => '[ RATE LIMIT ] Maksimal 5 transmisi per menit. Tunda siaran Anda.']);
+        exit;
+    }
     // ==========================================
 
     // Format Alias Otomatis: namapengirim@domainplanet.com
-    $formatted_author = htmlspecialchars(str_replace(' ', '', $author) . '@' . parse_url($from_planet, PHP_URL_HOST));
+    $domain_host = parse_url($normalized_from, PHP_URL_HOST);
+    $formatted_author = htmlspecialchars(str_replace(' ', '', $author) . '@' . $domain_host);
 
     // 3. [ CORE MEMORY INSERTION ]
-    $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, is_remote, author_alias, expiry_date) VALUES (:content, :visibility, 1, :author, :expiry)");
+    $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, is_remote, author_alias, expiry_date, media_url, sender_ip) VALUES (:content, :visibility, 1, :author, :expiry, :media_url, :ip)");
     $stmt->execute([
         ':content' => htmlspecialchars($content),
         ':visibility' => htmlspecialchars($visibility),
         ':author' => $formatted_author,
-        ':expiry' => $expiry_date ? htmlspecialchars($expiry_date) : null
+        ':expiry' => $expiry_date ? htmlspecialchars($expiry_date) : null,
+        ':media_url' => $media_url ? htmlspecialchars($media_url) : null,
+        ':ip' => $sender_ip
     ]);
 
     http_response_code(200);
