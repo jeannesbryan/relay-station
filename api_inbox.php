@@ -80,9 +80,11 @@ try {
     }
     // ==========================================
 
-    // Format Alias Otomatis: namapengirim@domainplanet.com
-    $domain_host = parse_url($normalized_from, PHP_URL_HOST);
-    $formatted_author = htmlspecialchars(str_replace(' ', '', $author) . '@' . $domain_host);
+    // Format Alias Otomatis: namapengirim@domainplanet.com/folder
+    $parsed_url = parse_url($normalized_from);
+    $domain_host = $parsed_url['host'] ?? 'UNKNOWN';
+    $path = isset($parsed_url['path']) ? rtrim($parsed_url['path'], '/') : '';
+    $formatted_author = htmlspecialchars(str_replace(' ', '', $author) . '@' . $domain_host . $path);
 
     // 3. [ CORE MEMORY INSERTION ]
     $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, is_remote, author_alias, expiry_date, media_url, sender_ip) VALUES (:content, :visibility, 1, :author, :expiry, :media_url, :ip)");

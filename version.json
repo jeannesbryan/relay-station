@@ -1,5 +1,5 @@
 {
-    "version": "3.0.0",
-    "changelog": "- Rilis arsitektur V3 (Fediverse Edition).\n- Penambahan modul Multimedia & Kompresi WebP (Client-side).\n- Peningkatan radar dengan Smart Tagging (Subfolder Aware).\n- Perbaikan bug Double-Escaping & Duplikasi Infinite Scroll.",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v3.0.0/relay-v3.0.0.zip"
+    "version": "3.0.1",
+    "changelog": "HOTFIX V3.0.1:\n- [BUG FIX] Mengembalikan mesin Radar Sweep yang sebelumnya tertimpa modul Transmitter.\n- [IMPROVEMENT] API Inbox sekarang membaca subfolder untuk alias pengirim (Subfolder Aware).\n- [MAINTENANCE] Radar Sweep kini otomatis menghapus stasiun kawan yang sudah mati.",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v3.0.1/relay-v3.0.1.zip"
 }
