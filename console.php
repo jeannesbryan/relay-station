@@ -159,7 +159,7 @@ try {
 
     <div class="t-container-fluid pt-0">
         <nav class="t-navbar mt-3 mb-4">
-            <div class="t-nav-brand"><span class="t-led-dot t-led-green"></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">v3.0 FEDIVERSE</span></div>
+            <div class="t-nav-brand"><span class="t-led-dot t-led-green"></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">v3.0.2</span></div>
             <div class="t-nav-menu">
                 <button id="installAppBtn" class="t-btn t-btn-sm">[ INSTALL PWA ]</button>
                 <a href="core/updater.php" class="t-btn warning t-btn-sm" title="Periksa Pembaruan Sistem">[ SYS_UPDATE ]</a>
