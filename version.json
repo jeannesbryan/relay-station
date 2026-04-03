@@ -1,5 +1,5 @@
 {
-    "version": "3.0.1",
-    "changelog": "HOTFIX V3.0.1:\n- [BUG FIX] Mengembalikan mesin Radar Sweep yang sebelumnya tertimpa modul Transmitter.\n- [IMPROVEMENT] API Inbox sekarang membaca subfolder untuk alias pengirim (Subfolder Aware).\n- [MAINTENANCE] Radar Sweep kini otomatis menghapus stasiun kawan yang sudah mati.",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v3.0.1/relay-v3.0.1.zip"
+    "version": "3.0.2",
+    "changelog": "- [SECURITY] Menutup kebocoran privasi media pada fitur Ghost Protocol.\n- [FIX] Mencegah Garbage Collector menghapus file keamanan (.htaccess).",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v3.0.2/Relay-OTA-Update-v3.0.2.zip"
 }

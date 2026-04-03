@@ -55,11 +55,28 @@ try {
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $db->setAttribute(PDO::ATTR_TIMEOUT, 5);
     
-    // 🧹 [ FAST GARBAGE COLLECTOR O(N) ]
+    // ==========================================
+    // 🧹 [ ADVANCED GARBAGE COLLECTOR V3.0.2 ]
+    // ==========================================
+    
+    // 1. Eksekusi mati fisik gambar Ghost Protocol SEBELUM data dihapus
+    $stmt_ghost = $db->query("SELECT media_url FROM transmissions WHERE expiry_date IS NOT NULL AND expiry_date <= CURRENT_TIMESTAMP AND media_url IS NOT NULL");
+    $expired_ghosts = $stmt_ghost->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($expired_ghosts as $ghost_img) {
+        $img_path = 'media/' . basename($ghost_img);
+        if (file_exists($img_path)) { @unlink($img_path); }
+    }
+    // Hapus data dari SQLite
+    $db->exec("DELETE FROM transmissions WHERE expiry_date IS NOT NULL AND expiry_date <= CURRENT_TIMESTAMP");
+    
+    // 2. Pembersihan Sampah Yatim Piatu (Orphans) dengan Whitelist
     $media_files = glob('media/*');
     if ($media_files) {
         $active_media = $db->query("SELECT media_url FROM transmissions WHERE media_url IS NOT NULL")->fetchAll(PDO::FETCH_COLUMN);
         $active_filenames = array_map('basename', $active_media);
+        
+        // [ FIX ]: Kekebalan Diplomatik (Whitelist) untuk file keamanan
+        $protected_files = ['.htaccess', 'index.php', 'index.html', 'robots.txt']; 
         
         $physical_files = [];
         foreach ($media_files as $file) {
@@ -67,12 +84,18 @@ try {
         }
         
         $orphans = array_diff($physical_files, $active_filenames);
-        foreach ($orphans as $orphan) { @unlink('media/' . $orphan); }
+        foreach ($orphans as $orphan) { 
+            // Jangan hapus jika file tersebut masuk daftar dilindungi
+            if (!in_array($orphan, $protected_files)) {
+                @unlink('media/' . $orphan); 
+            }
+        }
     }
     
-    $db->exec("DELETE FROM transmissions WHERE expiry_date IS NOT NULL AND expiry_date <= CURRENT_TIMESTAMP");
+    // Hapus pesan publik dari server luar yang sudah lebih dari 30 hari (Hemat Storage)
     $db->exec("DELETE FROM transmissions WHERE visibility = 'public' AND is_remote = 1 AND timestamp <= datetime('now', '-30 days')");
-    
+    // ==========================================
+
     // ==========================================
     // 🔄 [ AJAX ENDPOINT: CURSOR-BASED PAGINATION ]
     // ==========================================
