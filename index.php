@@ -64,9 +64,8 @@ try {
 
     <div class="t-container mt-4">
         <header class="text-center mb-5 t-border-bottom pb-4">
-            <h1 class="mb-1 text-success"><span class="t-blink">_</span>RELAY_STATION</h1>
-            <p class="text-muted m-0 fs-small">COORDINATES: relay.npc.my.id | <span class="t-led-dot t-led-green"></span> COMMANDER: ONLINE</p>
-            <div class="mt-2 text-warning fs-small">> v3.0.2</div>
+            <h1 class="mb-1 text-success"><span class="t-led-dot t-led-green t-blink" style="margin-right: 8px; transform: translateY(-3px);"></span>RELAY_STATION</h1>
+            <p class="text-muted m-0 fs-small">COORDINATES: relay.npc.my.id | COMMANDER: ONLINE</p>
         </header>
 
         <main id="signal-log">
@@ -103,8 +102,8 @@ try {
         <?php endif; ?>
 
         <footer class="text-center mt-5 text-muted fs-small t-border-top pt-4 mb-4">
-            <p class="mb-2">POWERED BY <a href="https://github.com/jeannesbryan/relay-station" class="text-success font-bold" style="text-decoration: none;">RELAY PROTOCOL</a></p>
-            <a href="console.php" class="text-muted" style="text-decoration: none;">[ SYSADMIN_LOGIN ]</a>
+            <p class="mb-2">POWERED BY <a href="https://github.com/jeannesbryan/relay-station" class="text-success font-bold" style="text-decoration: none;">RELAY PROTOCOL</a> v3.0.4</p>
+            <a href="console.php" class="text-muted" style="text-decoration: none;">[ SYSADMIN_LOGIN ] <span class="t-blink text-success">_</span></a>
         </footer>
     </div>
 

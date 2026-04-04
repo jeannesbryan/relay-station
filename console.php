@@ -159,7 +159,7 @@ try {
 
     <div class="t-container-fluid pt-0">
         <nav class="t-navbar mt-3 mb-4">
-            <div class="t-nav-brand"><span class="t-led-dot t-led-green"></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">v3.0.2</span></div>
+            <div class="t-nav-brand"><span class="t-led-dot t-led-green"></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">v3.0.4</span></div>
             <div class="t-nav-menu">
                 <button id="installAppBtn" class="t-btn t-btn-sm">[ INSTALL PWA ]</button>
                 <a href="core/updater.php" class="t-btn warning t-btn-sm" title="Periksa Pembaruan Sistem">[ SYS_UPDATE ]</a>
@@ -181,7 +181,9 @@ try {
                         <textarea name="content" rows="3" class="t-textarea" placeholder="> What's happening in your sector?" required></textarea>
 
                         <div class="mb-3 mt-2 d-flex align-items-center gap-2">
-                            <input type="file" id="media-input" name="media" accept="image/*" class="t-input m-0" style="padding: 6px; flex-grow:1;">
+                            <input type="file" id="media-input" name="media" accept="image/*" style="display: none;">
+                            <button type="button" class="t-btn t-btn-sm" onclick="document.getElementById('media-input').click();" style="white-space: nowrap;">[ ATTACH_MEDIA ]</button>
+                            <span id="file-name-display" class="fs-small text-muted" style="flex-grow:1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">> NO_MEDIA</span>
                             <span id="compress-status" class="fs-small text-warning font-bold"></span>
                         </div>
 
@@ -298,10 +300,20 @@ try {
 
         // 🖼️ 1. CLIENT-SIDE IMAGE COMPRESSION (CANVAS)
         const mediaInput = document.getElementById('media-input');
+        const fileDisplay = document.getElementById('file-name-display');
+        
         if (mediaInput) {
             mediaInput.addEventListener('change', function(e) {
-                const file = e.target.files[0]; if(!file) return;
+                const file = e.target.files[0]; 
+                if(!file) {
+                    fileDisplay.innerText = '> NO_MEDIA';
+                    document.getElementById('compress-status').innerText = '';
+                    return;
+                }
+                
+                fileDisplay.innerText = '> ' + file.name;
                 document.getElementById('compress-status').innerText = 'COMPRESSING...';
+                
                 const reader = new FileReader();
                 reader.onload = function(event) {
                     const img = new Image();
