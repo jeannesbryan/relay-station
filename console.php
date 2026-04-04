@@ -255,6 +255,9 @@ try {
                     <?php if(isset($_GET['status']) && $_GET['status'] == 'node_locked'): ?>
                         <div class="t-alert p-2 mb-2 fs-small" style="border-color: var(--t-green);">[✓] NODE LOCKED.</div>
                     <?php endif; ?>
+                    <?php if(isset($_GET['status']) && $_GET['status'] == 'node_removed'): ?>
+                        <div class="t-alert warning p-2 mb-2 fs-small">[!] NODE DISCONNECTED.</div>
+                    <?php endif; ?>
 
                     <form action="core/add_planet.php" method="POST" class="m-0" id="follow-form">
                         <input type="url" name="planet_url" class="t-input mb-2" placeholder="https://domain.com" required>
@@ -267,9 +270,12 @@ try {
                         <div class="t-list-item"><span class="t-list-item-subtitle text-center">[ NO NODES FOLLOWED ]</span></div>
                     <?php else: ?>
                         <?php foreach ($star_chart as $star): ?>
-                            <div class="t-list-item" style="cursor: default;">
-                                <span class="t-list-item-title"><?php echo htmlspecialchars($star['alias']); ?></span>
-                                <span class="t-list-item-subtitle text-success"><?php echo htmlspecialchars($star['planet_url']); ?></span>
+                            <div class="t-list-item d-flex justify-content-between align-items-center" style="cursor: default;">
+                                <div style="overflow: hidden;">
+                                    <span class="t-list-item-title"><?php echo htmlspecialchars($star['alias']); ?></span>
+                                    <span class="t-list-item-subtitle text-success"><?php echo htmlspecialchars($star['planet_url']); ?></span>
+                                </div>
+                                <a href="core/remove_planet.php?id=<?php echo $star['id']; ?>" class="t-btn danger t-btn-sm ml-2" style="padding: 2px 6px; border-radius: 0; min-width: auto;" title="Disconnect" onclick="return confirm('> PERINGATAN: Putuskan koneksi dari node ini?');">[ X ]</a>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>

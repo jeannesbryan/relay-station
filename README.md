@@ -1,61 +1,88 @@
-# 📡 RELAY STATION (v3.0 - Fediverse Edition)
+# 🌌 Relay Station: The Constellation Network
 
-**Decentralized Interplanetary Communication Terminal**
+> A sovereign, decentralized, and zero-dependency P2P communication node built for the open web. 
 
-RELAY adalah perangkat lunak *microblogging* dan komunikasi *Peer-to-Peer* (P2P) murni yang dirancang untuk satu tujuan: **Kedaulatan Data Mutlak**. Tidak ada server pusat. Tidak ada algoritma. Tidak ada korporasi yang memantau sinyal Anda. 
+**Relay Station** is not a social media platform; it is a communication node. By installing this software on your server, you establish your own sovereign "Star" in a dark universe. When multiple Relay Nodes connect, they form a **Constellation**—a decentralized network of independent nodes sharing public timelines and encrypted direct messages without any central authority, tracker, or corporate oversight.
 
-Anda menginstal stasiun ini di *hosting* Anda, dan Anda memiliki kendali penuh atas siapa yang bisa berkomunikasi dengan Anda di luasnya kehampaan digital.
-
-![UI Concept](https://img.shields.io/badge/UI_Concept-Satellite_Terminal-0a0a0a?style=for-the-badge&logo=gnu-terminal&logoColor=4af626)
-![Tech Stack](https://img.shields.io/badge/Tech_Stack-PHP_Native_%2B_SQLite3-blue?style=for-the-badge&logo=php)
-![Version](https://img.shields.io/badge/Version-3.0_Fediverse-orange)
-
-## 🌌 Filosofi: Satu Kapal, Satu Kapten
-RELAY mengusung arsitektur **Sovereign Single-Tenant**. Satu domain / satu server HANYA ditujukan untuk satu pengguna (Sang Kapten). 
-Anda tidak perlu mendaftar di server orang lain. Anda adalah pemegang kunci dari stasiun relay Anda sendiri.
-
-## 🚀 Fitur Taktis Utama (v3.0)
-
-* **Terminal UI Aesthetic:** Antarmuka dirancang menyerupai komputer kendali satelit bawah tanah dengan fitur *Infinite Scroll* (AJAX) tanpa muat ulang halaman.
-* **Fediverse Multimedia Hotlinking:** Dukungan unggah gambar antar-stasiun tanpa membebani *database* lawan.
-* **Client-Side Image Compression:** Gambar dikompresi menjadi format WebP langsung di *browser* Anda sebelum diunggah, menghemat *bandwidth* server hingga 90%.
-* **Direct Point-to-Point (P2P):** Pesan rahasia (*Laser Link*) dikirim secara langsung dari server Anda ke server tujuan tanpa perantara.
-* **Ghost Protocol:** Opsi penghancuran pesan otomatis (*Self-Destruct*) setelah 24 jam.
-* **Atmospheric Shield (Anti-Spoofing):** Dilengkapi *True Rate-Limiting* berbasis IP fisik pengirim untuk menangkal serangan *Spam* dan pemalsuan identitas domain.
-* **O(N) Garbage Collection:** Mesin akan otomatis membersihkan file gambar yatim piatu di latar belakang menggunakan algoritma C-level (`array_diff`) yang sangat ringan bagi prosesor.
-
-## 📊 Proyeksi Kapasitas Server (Shared Hosting)
-RELAY dirancang agar sangat ringan. Namun, performa P2P sangat bergantung pada batas *Entry Processes* (EP) dan CPU *hosting* Anda. 
-
-Untuk *Shared Hosting* standar (1 Core CPU, 1GB RAM, 25 EP, 4GB SSD):
-* 🟢 **Zona Hijau (10 - 150 Node Teman):** Sangat lancar. Layar *loading* saat *broadcast* hanya memakan waktu 2-5 detik. Bebas *error*.
-* 🟡 **Zona Kuning (150 - 300 Node Teman):** Mulai terasa beban antrean koneksi. *Broadcast* butuh 10-20 detik.
-* 🔴 **Zona Merah (> 400 Node Teman):** Rawan *Crash*. Rentan terkena *Error 508 (Resource Limit)* akibat batas eksekusi CPU saat menembakkan banyak sinyal sekaligus.
-
-## 🗺️ Roadmap & Limitasi Skalabilitas (Menuju v4.0)
-Karena arsitektur V3 menggunakan pemrosesan sinkronous murni, ini adalah batasan fisika komputasi yang kelak akan kita pecahkan pada Evolusi V4:
-
-1. **The Broadcast Bomb (Solusi Terjadwal: Asynchronous Queues)**
-   * *Masalah:* Melakukan *Multi-cURL* ke 5.000 stasiun sekaligus akan menghabiskan memori dan memicu PHP Timeout (504).
-   * *Rencana v4:* Menggunakan sistem *Background Queue* (Antrean Latar Belakang) atau *Cron Job* agar pesan ditembakkan secara bertahap.
-2. **The SQLite Write-Lock (Solusi Terjadwal: Database Migration)**
-   * *Masalah:* Jika ada 1.000 stasiun membalas pesan Anda di detik yang sama, file SQLite akan terkunci (*Database is locked*).
-   * *Rencana v4:* Menambahkan dukungan opsional ke MySQL/PostgreSQL untuk menangani puluhan ribu *query* serentak dengan *Row-Level Locking*.
-3. **Radar Sweep Timeout (Solusi Terjadwal: Chunking & Webhooks)**
-   * *Masalah:* Mengeping ribuan stasiun sekaligus akan dihentikan paksa oleh server (`max_execution_time`).
-   * *Rencana v4:* Memecah proses ping menjadi kelompok kecil (*Chunking*) atau beralih ke sistem *PubSub/Webhook*.
-4. **Viral Media Bandwidth (Solusi Terjadwal: S3/R2 Cloud Storage)**
-   * *Masalah:* Jika satu gambar di server lokal Anda viral dan di-*hotlink* jutaan kali, kuota *Bandwidth* server Anda akan habis.
-   * *Rencana v4:* Integrasi otomatis pengunggahan folder `/media/` ke *Object Storage* eksternal seperti Cloudflare R2 atau AWS S3.
-
-## ⚙️ Kemudahan Deployment
-RELAY dibangun untuk mereka yang tidak ingin repot berurusan dengan *Node.js*, *Docker*, atau *PostgreSQL* yang berat.
-Cukup unggah *file* ke *Shared Hosting* termurah sekalipun, jalankan `install.php` di *browser*, dan stasiun Anda akan menciptakan *database* SQLite-nya sendiri lalu mengunci sistem secara otomatis.
-
-## 🛠️ Persyaratan Sistem Minimum
-* PHP 8.0+ (dengan ekstensi `curl`, `sqlite3`, `zip`, `pdo`)
-* Web Server (Apache/Nginx/LiteSpeed)
-* Kapasitas penyimpanan minimal 50MB
+Built purely with **PHP** and **SQLite**, it is designed to run on absolutely any basic shared hosting environment. No Docker, no Node.js, no terminal commands required.
 
 ---
-*“Transmit your signal into the void. Let the right nodes find you.”*
+
+## ⚙️ System Requirements
+
+Relay Station is designed to be extremely lightweight and can be hosted on a $1/month shared hosting plan or a Raspberry Pi.
+* **PHP:** Version 7.4, 8.0, 8.1, or 8.2+
+* **Database:** SQLite3 (No MySQL/MariaDB setup required)
+* **Required PHP Extensions:** `cURL` (for transmission), `pdo_sqlite` (for core memory), `ZipArchive` (for OTA updates & installation), and `gd` or `fileinfo` (for media processing).
+
+---
+
+## 🚀 Core Capabilities & Features
+
+* **100% Data Sovereignty:** You own the server, the database, and the media. There is no central database.
+* **Constellation Star Chart (P2P Following):** Connect to other Relay nodes simply by adding their URL. The system automatically validates the target node.
+* **Public Hologram & Laser Links:** Broadcast messages to the public timeline of your entire constellation, or send target-specific Direct Messages (Laser Links).
+* **Ghost Protocol:** Transmit highly sensitive text and media that will automatically and physically self-destruct from the SQLite database and the server's hard drive after 24 hours. *(Note: Please ensure your hosting provider's automated daily backups are configured correctly if absolute physical deletion is required).*
+* **Deep Space Radar Sweep:** An automated pinging system that scans your Star Chart. If an allied node goes offline or is destroyed, your radar automatically purges them from your database to keep your node clean.
+* **Client-Side WebP Compression:** Uploaded media is compressed into lightweight WebP format directly in the user's browser before transmission, saving massive server bandwidth.
+* **Self-Healing OTA Updates:** A built-in Over-The-Air (OTA) updater that allows station commanders to patch their node to the latest version with a single click, without touching the database or media folders.
+
+---
+
+## 🌍 Deployment Flexibility (Agnostic Routing)
+
+Relay Station is engineered to be **Subdomain and Subfolder Agnostic**. You can deploy your node anywhere without breaking the transmission routing or facing identity crisis bugs:
+* **Root Domain:** `https://your-domain.com`
+* **Subdomain:** `https://relay.your-domain.com`
+* **Deep Subfolder:** `https://your-domain.com/secret/bunker/node`
+
+The Transmitter Engine will automatically detect its exact coordinates and introduce itself correctly to the Constellation.
+
+---
+
+## ⚖️ Architecture: Pros & Cons
+
+Relay Station is built on a pure **Peer-to-Peer (P2P) Distributed Architecture**. This brings absolute freedom, but also specific technical trade-offs.
+
+### The Advantages (Pros)
+1.  **Extreme Resilience (Anti-Fragile):** There is no central tracking server. If 90% of the nodes in the universe are destroyed, the remaining 10% will continue to function and communicate flawlessly.
+2.  **Zero-Configuration Deployment:** The "Drop-Pod" installer builds the database, sets up security protocols, and self-destructs the installation files automatically. 
+3.  **Lightweight & Cost-Effective:** Uses SQLite for core memory and requires minimal RAM. It cleans up its own orphan files and old public signals automatically via an advanced Garbage Collector.
+4.  **Censorship Resistant:** No algorithm, no shadow-banning, and no central moderation. You only receive data from the nodes you explicitly trust and follow.
+
+### The Limitations (Cons)
+1.  **The "Dark Universe" Concept (No Discovery):** Because there is no central tracker, there is no global "explore" page. You cannot search for users. You must know the exact URL of another Relay Station to connect with them.
+2.  **Eventual Consistency:** This is not a real-time WebSocket chat app. Signals are fired via asynchronous HTTP requests (cURL). It may take a few seconds for a message to propagate across a large constellation.
+3.  **Storage Responsibility:** While the Garbage Collector helps delete old public messages and Ghost Protocol media, permanent media storage relies entirely on your own server's capacity.
+4.  **Trust-Based Network:** If a node you follow starts broadcasting spam, your only defense is to manually trigger the **Disconnect Protocol** (Unfollow). 
+
+---
+
+## 🔌 Installation (Genesis Deployment)
+
+Relay Station utilizes a highly secure **Drop-Pod Installation** method. 
+
+1. Download the latest `Relay-Installer-vX.X.X.zip` from the **Releases** tab.
+2. Upload and extract the ZIP file into your server's chosen directory.
+3. Access `https://your-domain.com/path-to-folder/install.php` via your web browser.
+4. Create your Master Passcode.
+5. The system will extract the core files, build the SQLite database, secure the data directories, and **automatically delete the installer files** to prevent unauthorized access.
+
+### Updating the Station
+When a new version is available, you do not need to download anything manually. Simply click the **`[ SYS_UPDATE ]`** button inside your Relay Console to initiate the Over-The-Air patch.
+
+---
+
+## 🛡️ Security Systems
+
+* **Rate Limiting & Anti-Spoofing:** The `api_inbox.php` endpoint restricts incoming transmissions to a maximum of 5 signals per minute per IP address.
+* **Symmetrical Firewall:** Incoming signals are only accepted if the sender's planet URL is explicitly listed in your Star Chart (Following list). Unknown intruders are automatically dropped.
+* **Encrypted Sessions:** Console access requires a Master Passcode hashed securely within the SQLite core memory.
+
+---
+
+## 📜 License
+
+This project is open-source and built for the Sovereign Web. Feel free to fork, modify, and deploy your own constellation.
+
+> *"We are just stars trying to connect in the vast emptiness."*

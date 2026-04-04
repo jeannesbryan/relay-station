@@ -1,37 +1,43 @@
 <?php
-// RELAY STATION: TRANSMITTER ENGINE (FEDIVERSE EDITION)
-// Menangani pengiriman pesan Publik, Direct, Ghost Protocol, dan Multimedia Hotlinking
+// ==========================================================
+// RELAY STATION: TRANSMITTER ENGINE (CONSTELLATION NETWORK)
+// Handles Public, Direct, Ghost Protocol messages, and Media
+// ==========================================================
 
-date_default_timezone_set('UTC'); // Wajib UTC agar tidak salah meledak
+date_default_timezone_set('UTC'); // Enforce UTC to prevent Ghost Protocol timing issues
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $db_file = '../data/relay_core.sqlite';
     
-    // 1. Tangkap Input Konsol
+    // 1. Capture Console Input
     $content = trim($_POST['content'] ?? '');
     $visibility = $_POST['visibility'] ?? 'public';
     $target_planet = trim($_POST['target_planet'] ?? '');
     
-    // 2. Deteksi Ghost Protocol (Centang kotak ledakan)
+    // 2. Detect Ghost Protocol (Self-destruct timer)
     $is_ghost = isset($_POST['ghost_protocol']) ? true : false;
     $expiry_date = null;
     if ($is_ghost) {
         $expiry_date = date('Y-m-d H:i:s', strtotime('+24 hours'));
     }
 
-    // 3. Identifikasi Koordinat Lokal Kapten (Subfolder Agnostic)
+    // 3. Identify Local Commander Coordinates (Subfolder Aware V3.0.4)
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
     $host = $_SERVER['HTTP_HOST'];
     
-    // Melacak path folder dinamis (karena script ini ada di /core/, kita harus naik 1 level)
-    $script_path = dirname($_SERVER['SCRIPT_NAME']); // misal: /relay/core atau /core
-    $base_path = dirname($script_path); // Naik ke: /relay atau /
-    if ($base_path === '/' || $base_path === '\\') $base_path = ''; // Bersihkan jika instalasi di Root
-    
+    // Track dynamic folder path (since this script is in /core/, we must go up 1 level)
+    $script_path = dirname($_SERVER['SCRIPT_NAME']); 
+    $base_path = dirname($script_path); 
+
+    // Ensure no double slash at the end
+    if ($base_path === '\\' || $base_path === '/') {
+        $base_path = '';
+    }
+
     $my_planet_url = $protocol . $host . $base_path;
     $author_alias = 'LOCAL_COMMAND'; 
     
-    // Cegah tembakan kosong
+    // Prevent empty payload transmission
     if ($content === '') {
         $redirect = ($visibility === 'direct') ? '../direct.php' : '../console.php';
         header("Location: $redirect?error=empty_payload");
@@ -39,43 +45,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // ==========================================
-    // 🖼️ [ FEDIVERSE MEDIA PROCESSING V3 ]
+    // 🖼️ [ MEDIA PROCESSING ]
     // ==========================================
     $media_url = null;
-    $upload_dir = '../media/';
-    
-    // Buat direktori jika belum ada (Failsafe)
-    if (!is_dir($upload_dir)) {
-        mkdir($upload_dir, 0755, true);
-    }
-    
-    // 🖼️ PRIORITAS 1: Tangkap gambar hasil kompresi (Base64) dari JavaScript
-    if (!empty($_POST['media_base64'])) {
-        $base64_string = $_POST['media_base64'];
+    if (isset($_FILES['media']) && $_FILES['media']['error'] === UPLOAD_ERR_OK) {
+        $upload_dir = '../media/';
         
-        // 🛡️ [ SANITY CHECK ] Cegah peretas mengirim string palsu yang menyebabkan file sampah
-        if (strpos($base64_string, ';base64,') !== false) {
-            list($type, $data) = explode(';', $base64_string);
-            list(, $data)      = explode(',', $data);
-            $decoded = base64_decode($data);
-            $filename = uniqid('sig_') . '.webp'; // Selalu WebP karena dikompresi di client
-            
-            // Simpan gambar secara fisik di server LOKAL (Sovereign Storage)
-            if (file_put_contents($upload_dir . $filename, $decoded)) {
-                $media_url = rtrim($my_planet_url, '/') . '/media/' . $filename;
-            }
+        // Create directory if it doesn't exist (Failsafe)
+        if (!is_dir($upload_dir)) {
+            mkdir($upload_dir, 0755, true);
         }
-    } 
-    // 🖼️ PRIORITAS 2: Fallback ke Native Upload
-    elseif (isset($_FILES['media']) && $_FILES['media']['error'] === UPLOAD_ERR_OK) {
+        
         $file_ext = strtolower(pathinfo($_FILES['media']['name'], PATHINFO_EXTENSION));
         $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
         
         if (in_array($file_ext, $allowed_ext)) {
+            // Generate unique filename
             $filename = uniqid('sig_') . '.' . $file_ext;
             $target_file = $upload_dir . $filename;
             
+            // Save physical image to LOCAL server (Sovereign Storage)
             if (move_uploaded_file($_FILES['media']['tmp_name'], $target_file)) {
+                // Assemble absolute URL for Constellation transmission
                 $media_url = rtrim($my_planet_url, '/') . '/media/' . $filename;
             }
         }
@@ -86,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $db = new PDO("sqlite:" . $db_file);
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         
-        // 4. TULIS KE MEMORI LOKAL
+        // 4. WRITE TO LOCAL CORE MEMORY
         $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, target_planet, is_remote, author_alias, expiry_date, media_url) VALUES (:content, :visibility, :target, 0, :author, :expiry, :media)");
         $stmt->execute([
             ':content' => htmlspecialchars($content),
@@ -97,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':media' => $media_url
         ]);
         
-        // 5. RAKIT KAPSUL JSON (Termasuk URL Media)
+        // 5. ASSEMBLE JSON CAPSULE
         $payload = json_encode([
             "content" => $content,
             "author_alias" => $author_alias,
@@ -107,15 +98,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             "media_url" => $media_url
         ]);
 
-        // --- [ PILIHAN SENJATA MERIAM ] ---
+        // --- [ TRANSMISSION ROUTING ] ---
 
         if ($visibility === 'public') {
-            // [ SCATTER BEAM ] Tembak ke semua sekutu di Peta Bintang
+            // [ SCATTER BEAM ] Broadcast to all allies in the Star Chart
             $query = $db->query("SELECT planet_url FROM following");
             $allies = $query->fetchAll(PDO::FETCH_ASSOC);
             
             if (count($allies) > 0) {
-                // Senjata Mesin (Multi-cURL)
+                // Machine Gun (Multi-cURL)
                 $mh = curl_multi_init();
                 $curl_array = [];
                 foreach ($allies as $i => $ally) {
@@ -128,25 +119,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'Content-Type: application/json',
                         'Content-Length: ' . strlen($payload)
                     ]);
-                    curl_setopt($curl_array[$i], CURLOPT_TIMEOUT, 5); // Timeout anti-hang
+                    curl_setopt($curl_array[$i], CURLOPT_TIMEOUT, 5); // Anti-hang timeout
                     curl_multi_add_handle($mh, $curl_array[$i]);
                 }
                 
-                // Tembak serentak
+                // Fire simultaneously
                 $running = null;
                 do { curl_multi_exec($mh, $running); } while ($running);
                 
-                // Tarik selongsong peluru
+                // Clean up execution handles
                 foreach ($allies as $i => $ally) { curl_multi_remove_handle($mh, $curl_array[$i]); }
                 curl_multi_close($mh);
             }
 
         } elseif ($visibility === 'direct') {
-            // [ LASER LINK ] Tembak spesifik ke satu target
+            // [ LASER LINK ] Fire specific Direct Message
             if (!empty($target_planet)) {
                 $target_url = rtrim($target_planet, '/') . '/api_inbox.php';
                 
-                // Senjata Runtun (Single cURL)
+                // Single cURL execution
                 $ch = curl_init($target_url);
                 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                 curl_setopt($ch, CURLOPT_POST, true);
@@ -155,13 +146,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'Content-Type: application/json',
                     'Content-Length: ' . strlen($payload)
                 ]);
-                curl_setopt($ch, CURLOPT_TIMEOUT, 5); // Timeout anti-hang
+                curl_setopt($ch, CURLOPT_TIMEOUT, 5); // Anti-hang timeout
                 curl_exec($ch);
                 curl_close($ch);
             }
         }
         
-        // Misi selesai, kembali ke Radar yang tepat
+        // Mission complete, return to appropriate Radar
         if ($visibility === 'direct') {
             header("Location: ../direct.php?status=transmission_successful");
         } else {
@@ -173,5 +164,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         die("<h3 style='color:red;'>[ TRANSMISSION FAILED ] Core Memory Error: " . $e->getMessage() . "</h3>");
     }
 } else {
-    die("<h3 style='color:red;'>[ ERROR ] Invalid Protocol. Gunakan konsol utama.</h3>");
+    die("<h3 style='color:red;'>[ ERROR ] Invalid Protocol. Use main console.</h3>");
 }

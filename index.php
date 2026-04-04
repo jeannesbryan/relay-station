@@ -1,6 +1,6 @@
 <?php
 // RELAY STATION: PUBLIC HOLOGRAM (FEDIVERSE EDITION V3.0)
-// Wajah stasiun untuk pengunjung publik (Read-Only)
+// The station's interface for public visitors (Read-Only)
 
 $db_file = 'data/relay_core.sqlite';
 
@@ -13,17 +13,17 @@ try {
     // ==========================================
     if (isset($_GET['last_id'])) {
         $last_id = (int)$_GET['last_id'];
-        // Mengambil pesan yang ID-nya lebih kecil (lebih lama) dari pesan terakhir di layar
+        // Fetch messages with an ID smaller (older) than the last message on the screen
         $stmt = $db->prepare("SELECT * FROM transmissions WHERE visibility = 'public' AND is_remote = 0 AND id < :last_id ORDER BY id DESC LIMIT 15");
         $stmt->execute([':last_id' => $last_id]);
         $transmissions = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($transmissions as $msg) {
-            // [ BUG FIX 1 ]: Bebas dari double escaping
+            // [ BUG FIX 1 ]: Free from double escaping
             $content = nl2br($msg['content']);
             $img = !empty($msg['media_url']) ? '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" alt="Broadcast Media" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>' : '';
             
-            // [ BUG FIX 3 ]: Tambahkan class 'transmission-card' dan atribut 'data-id'
+            // [ BUG FIX 3 ]: Add 'transmission-card' class and 'data-id' attribute
             echo "<div class='t-card mb-3 transmission-card' data-id='{$msg['id']}'>
                     <span class='t-bubble-meta t-border-bottom pb-2 mb-2 d-block'>
                         [ {$msg['timestamp']} UTC ] <strong class='text-success'>" . htmlspecialchars($msg['author_alias'] ?? 'COMMANDER') . "</strong>
@@ -39,7 +39,7 @@ try {
     $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'public' AND is_remote = 0 ORDER BY id DESC LIMIT 15");
     $transmissions = $query->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
-    die("<h3 class='t-alert danger'>[ SIGNAL LOST ] Stasiun sedang dalam perbaikan.</h3>");
+    die("<h3 class='t-alert danger'>[ SIGNAL LOST ] Station is currently under maintenance.</h3>");
 }
 ?>
 
@@ -66,7 +66,7 @@ try {
         <header class="text-center mb-5 t-border-bottom pb-4">
             <h1 class="mb-1 text-success"><span class="t-blink">_</span>RELAY_STATION</h1>
             <p class="text-muted m-0 fs-small">COORDINATES: relay.npc.my.id | <span class="t-led-dot t-led-green"></span> COMMANDER: ONLINE</p>
-            <div class="mt-2 text-warning fs-small">> FEDIVERSE EDITION v3.0</div>
+            <div class="mt-2 text-warning fs-small">> v3.0.2</div>
         </header>
 
         <main id="signal-log">
@@ -74,7 +74,7 @@ try {
             
             <?php if (empty($transmissions)): ?>
                 <div class="t-card text-center text-muted p-5" style="border-style: dashed;">
-                    <p class="m-0">[ ARSIP KOSONG. KAPTEN BELUM MEMANCARKAN SINYAL. ]</p>
+                    <p class="m-0">[ ARCHIVE EMPTY. COMMANDER HAS NOT TRANSMITTED ANY SIGNALS. ]</p>
                 </div>
             <?php else: ?>
                 <?php foreach ($transmissions as $msg): ?>
@@ -120,7 +120,7 @@ try {
                     isFetching = true;
                     loadMoreEl.innerText = '[ RECEIVING SIGNALS... ]';
                     
-                    // Cari ID dari pesan terakhir di layar
+                    // Find the ID of the last message on the screen
                     const cards = document.querySelectorAll('.transmission-card');
                     if (cards.length === 0) return;
                     const lastId = cards[cards.length - 1].getAttribute('data-id');
@@ -131,7 +131,7 @@ try {
                         if(html.trim() !== '') {
                             document.getElementById('signal-log').insertAdjacentHTML('beforeend', html);
                             isFetching = false;
-                            loadMoreEl.innerText = '[ SCROLL DOWN TO SCAN ]';
+                            loadMoreEl.innerText = '[ SCROLL DOWN TO SCAN DEEP SPACE ]';
                         } else {
                             loadMoreEl.innerText = '[ END OF TRANSMISSIONS ]';
                             observer.disconnect();
