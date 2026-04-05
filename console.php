@@ -58,43 +58,28 @@ try {
     // ==========================================
     // 🧹 [ ADVANCED GARBAGE COLLECTOR V3.0.2 ]
     // ==========================================
-    
-    // 1. Eksekusi mati fisik gambar Ghost Protocol SEBELUM data dihapus
     $stmt_ghost = $db->query("SELECT media_url FROM transmissions WHERE expiry_date IS NOT NULL AND expiry_date <= CURRENT_TIMESTAMP AND media_url IS NOT NULL");
     $expired_ghosts = $stmt_ghost->fetchAll(PDO::FETCH_COLUMN);
     foreach ($expired_ghosts as $ghost_img) {
         $img_path = 'media/' . basename($ghost_img);
         if (file_exists($img_path)) { @unlink($img_path); }
     }
-    // Hapus data dari SQLite
     $db->exec("DELETE FROM transmissions WHERE expiry_date IS NOT NULL AND expiry_date <= CURRENT_TIMESTAMP");
     
-    // 2. Pembersihan Sampah Yatim Piatu (Orphans) dengan Whitelist
     $media_files = glob('media/*');
     if ($media_files) {
         $active_media = $db->query("SELECT media_url FROM transmissions WHERE media_url IS NOT NULL")->fetchAll(PDO::FETCH_COLUMN);
         $active_filenames = array_map('basename', $active_media);
-        
-        // [ FIX ]: Kekebalan Diplomatik (Whitelist) untuk file keamanan
         $protected_files = ['.htaccess', 'index.php', 'index.html', 'robots.txt']; 
         
         $physical_files = [];
-        foreach ($media_files as $file) {
-            if (is_file($file)) { $physical_files[] = basename($file); }
-        }
-        
+        foreach ($media_files as $file) { if (is_file($file)) { $physical_files[] = basename($file); } }
         $orphans = array_diff($physical_files, $active_filenames);
         foreach ($orphans as $orphan) { 
-            // Jangan hapus jika file tersebut masuk daftar dilindungi
-            if (!in_array($orphan, $protected_files)) {
-                @unlink('media/' . $orphan); 
-            }
+            if (!in_array($orphan, $protected_files)) { @unlink('media/' . $orphan); }
         }
     }
-    
-    // Hapus pesan publik dari server luar yang sudah lebih dari 30 hari (Hemat Storage)
     $db->exec("DELETE FROM transmissions WHERE visibility = 'public' AND is_remote = 1 AND timestamp <= datetime('now', '-30 days')");
-    // ==========================================
 
     // ==========================================
     // 🔄 [ AJAX ENDPOINT: CURSOR-BASED PAGINATION ]
@@ -109,11 +94,10 @@ try {
             $author = htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN');
             $ghost = !empty($msg['expiry_date']) ? '<span class="t-badge danger t-flicker">[ 👻 GHOSTED ]</span>' : '';
             $src = $msg['is_remote'] ? 'INCOMING FROM:' : 'LOCAL_AUTHOR:';
-            // [ BUG FIX 1 ]: Bebas dari double escaping
             $content = nl2br($msg['content']);
-            $img = !empty($msg['media_url']) ? '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>' : '';
+            // EFEK HOLOGRAM
+            $img = !empty($msg['media_url']) ? '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" class="t-hologram-img" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>' : '';
             
-            // [ BUG FIX 3 ]: Tambahkan class 'transmission-card' dan atribut 'data-id'
             echo "<div class='t-card mb-3 p-3 transmission-card' data-id='{$msg['id']}'>
                     <div class='t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap'>
                         <span>[ {$msg['timestamp']} UTC ] $src <strong class='text-success'>$author</strong></span> $ghost
@@ -123,13 +107,17 @@ try {
         }
         exit;
     }
-    // ==========================================
     
     $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'public' ORDER BY id DESC LIMIT 15");
     $transmissions = $query->fetchAll(PDO::FETCH_ASSOC);
 
     $query_stars = $db->query("SELECT * FROM following ORDER BY added_at DESC");
     $star_chart = $query_stars->fetchAll(PDO::FETCH_ASSOC);
+
+    // [ BACA NOTIFIKASI ALERTS ]
+    $stmt_alerts = $db->query("SELECT * FROM alerts WHERE is_read = 0 ORDER BY id DESC");
+    $active_alerts = $stmt_alerts->fetchAll(PDO::FETCH_ASSOC);
+
 } catch (PDOException $e) {
     die("<h3 class='t-alert danger'>[ CRITICAL ERROR ] Core Memory Offline.</h3>");
 }
@@ -147,6 +135,15 @@ try {
     <link rel="manifest" href="manifest.json">
     <style>
         #installAppBtn { display: none; }
+        /* TACTICAL HOLOGRAM IMAGE FX */
+        .t-hologram-img {
+            filter: grayscale(100%) sepia(100%) hue-rotate(80deg) brightness(0.7) contrast(1.2);
+            transition: 0.3s ease-in-out;
+            cursor: crosshair;
+        }
+        .t-hologram-img:hover {
+            filter: grayscale(0%) sepia(0%) hue-rotate(0deg) brightness(1) contrast(1);
+        }
     </style>
 </head>
 <body class="t-crt">
@@ -159,7 +156,13 @@ try {
 
     <div class="t-container-fluid pt-0">
         <nav class="t-navbar mt-3 mb-4">
-            <div class="t-nav-brand"><span class="t-led-dot t-led-green"></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">v3.0.4</span></div>
+            <div class="t-nav-brand">
+                <span class="t-led-dot t-led-green"></span> RELAY_STATION 
+                <span class="fs-small text-muted fw-normal ml-2">v3.0.6</span>
+                <?php if (count($active_alerts) > 0): ?>
+                    <span class="text-warning t-blink ml-2 fw-normal" style="font-size:12px;">[ 🔔 <?php echo count($active_alerts); ?> NEW ]</span>
+                <?php endif; ?>
+            </div>
             <div class="t-nav-menu">
                 <button id="installAppBtn" class="t-btn t-btn-sm">[ INSTALL PWA ]</button>
                 <a href="core/updater.php" class="t-btn warning t-btn-sm" title="Periksa Pembaruan Sistem">[ SYS_UPDATE ]</a>
@@ -175,9 +178,7 @@ try {
                 <div class="t-card">
                     <form action="core/transmitter.php" method="POST" enctype="multipart/form-data" class="m-0" id="broadcast-form">
                         <input type="hidden" name="visibility" value="public">
-                        
                         <input type="hidden" name="media_base64" id="media-base64">
-                        
                         <textarea name="content" rows="3" class="t-textarea" placeholder="> What's happening in your sector?" required></textarea>
 
                         <div class="mb-3 mt-2 d-flex align-items-center gap-2">
@@ -216,7 +217,7 @@ try {
                                 
                                 <?php if(!empty($msg['media_url'])): ?>
                                     <div class="mt-3 text-center">
-                                        <img src="<?php echo htmlspecialchars($msg['media_url']); ?>" alt="Transmission Media" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;">
+                                        <img src="<?php echo htmlspecialchars($msg['media_url']); ?>" class="t-hologram-img" alt="Transmission Media" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;">
                                     </div>
                                 <?php endif; ?>
                             </div>
@@ -246,6 +247,21 @@ try {
                     </a>
                 </div>
 
+                <?php if (!empty($active_alerts)): ?>
+                    <h2 class="t-card-header text-warning t-blink">> 🔔 ALERTS (<?php echo count($active_alerts); ?>)</h2>
+                    <div class="t-list-group mb-4">
+                        <?php foreach ($active_alerts as $alert): ?>
+                            <div class="t-card p-2 mb-2" style="border-color: var(--t-yellow); background: rgba(255,255,0,0.05);">
+                                <div class="fs-small text-warning mb-2">> PING DETECTED: <br><strong style="word-break: break-all;"><?php echo htmlspecialchars($alert['from_planet']); ?></strong></div>
+                                <div class="d-flex gap-2">
+                                    <button onclick="acceptHandshake('<?php echo htmlspecialchars($alert['from_planet']); ?>', <?php echo $alert['id']; ?>)" class="t-btn warning w-100" style="padding:4px; font-size:11px;">[ FOLLOW BACK ]</button>
+                                    <a href="core/alert_action.php?id=<?php echo $alert['id']; ?>" class="t-btn danger w-100 text-center" style="padding:4px; font-size:11px; text-decoration:none;">[ IGNORE ]</a>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+
                 <h2 class="t-card-header d-flex justify-content-between align-items-center">
                     > 🗺️ STAR_CHART
                     <button onclick="runRadarSweep()" id="btn-sweep" class="t-btn warning t-btn-sm" title="Ping All Nodes">[ PING ALL ]</button>
@@ -253,6 +269,12 @@ try {
                 <div class="t-card p-2 mb-3 mt-3">
                     <?php if(isset($_GET['error']) && $_GET['error'] == 'invalid_node'): ?>
                         <div class="t-alert danger p-2 mb-2 fs-small">[!] SIGNAL LOST: Invalid Node.</div>
+                    <?php endif; ?>
+                    <?php if(isset($_GET['error']) && $_GET['error'] == 'empty_url'): ?>
+                        <div class="t-alert danger p-2 mb-2 fs-small">[!] ERROR: Empty Coordinates.</div>
+                    <?php endif; ?>
+                    <?php if(isset($_GET['error']) && $_GET['error'] == 'self_node'): ?>
+                        <div class="t-alert warning p-2 mb-2 fs-small">[!] RADAR REJECTED: Cannot target your own node.</div>
                     <?php endif; ?>
                     <?php if(isset($_GET['status']) && $_GET['status'] == 'node_locked'): ?>
                         <div class="t-alert p-2 mb-2 fs-small" style="border-color: var(--t-green);">[✓] NODE LOCKED.</div>
@@ -262,7 +284,7 @@ try {
                     <?php endif; ?>
 
                     <form action="core/add_planet.php" method="POST" class="m-0" id="follow-form">
-                        <input type="url" name="planet_url" class="t-input mb-2" placeholder="https://domain.com" required>
+                        <input type="url" name="planet_url" id="target-planet-input" class="t-input mb-2" placeholder="https://domain.com" required>
                         <button type="submit" class="t-btn w-100 t-btn-sm">[ FOLLOW NODE ]</button>
                     </form>
                 </div>
@@ -292,13 +314,22 @@ try {
         document.getElementById('broadcast-form').addEventListener('submit', () => { Terminal.splash.show('> TRANSMITTING_SIGNAL...'); });
         document.getElementById('follow-form').addEventListener('submit', () => { Terminal.splash.show('> LOCKING_COORDINATES...'); });
 
+        // TACTICAL HANDSHAKE ACCEPTOR
+        function acceptHandshake(url, alertId) {
+            document.getElementById('target-planet-input').value = url;
+            Terminal.splash.show('> PROCESSING_MUTUAL_LINK...');
+            fetch('core/alert_action.php?id=' + alertId + '&ajax=1').then(() => {
+                document.getElementById('follow-form').submit();
+            });
+        }
+
         let deferredPrompt; const installBtn = document.getElementById('installAppBtn');
         if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(err => console.log('SW Reg Failed:', err)); }); }
         window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; installBtn.style.display = 'inline-block'; });
         installBtn.addEventListener('click', async () => { if (deferredPrompt !== null) { deferredPrompt.prompt(); const { outcome } = await deferredPrompt.userChoice; if (outcome === 'accepted') { installBtn.style.display = 'none'; } deferredPrompt = null; } });
         window.addEventListener('appinstalled', () => { installBtn.style.display = 'none'; });
 
-        // 🖼️ 1. CLIENT-SIDE IMAGE COMPRESSION (CANVAS)
+        // 🖼️ 1. CLIENT-SIDE IMAGE COMPRESSION
         const mediaInput = document.getElementById('media-input');
         const fileDisplay = document.getElementById('file-name-display');
         
@@ -344,7 +375,6 @@ try {
                     isFetching = true;
                     loadMoreEl.innerText = '[ RECEIVING SIGNALS... ]';
                     
-                    // Cari ID dari pesan terakhir di layar
                     const cards = document.querySelectorAll('.transmission-card');
                     if (cards.length === 0) return;
                     const lastId = cards[cards.length - 1].getAttribute('data-id');

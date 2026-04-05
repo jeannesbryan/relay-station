@@ -22,12 +22,14 @@ try {
             // [ BUG FIX 1 ]: Free from double escaping
             $content = nl2br($msg['content']);
             $img = !empty($msg['media_url']) ? '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" alt="Broadcast Media" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>' : '';
+            $ghost = !empty($msg['expiry_date']) ? '<span class="t-badge danger t-flicker">[ 👻 GHOSTED ]</span>' : '';
             
             // [ BUG FIX 3 ]: Add 'transmission-card' class and 'data-id' attribute
             echo "<div class='t-card mb-3 transmission-card' data-id='{$msg['id']}'>
-                    <span class='t-bubble-meta t-border-bottom pb-2 mb-2 d-block'>
-                        [ {$msg['timestamp']} UTC ] <strong class='text-success'>" . htmlspecialchars($msg['author_alias'] ?? 'COMMANDER') . "</strong>
-                    </span>
+                    <div class='t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap'>
+                        <span>[ {$msg['timestamp']} UTC ] <strong class='text-success'>" . htmlspecialchars($msg['author_alias'] ?? 'COMMANDER') . "</strong></span>
+                        $ghost
+                    </div>
                     <p class='m-0' style='font-size: 14px;'>$content</p>
                     $img
                   </div>";
@@ -78,9 +80,12 @@ try {
             <?php else: ?>
                 <?php foreach ($transmissions as $msg): ?>
                     <div class="t-card mb-3 transmission-card" data-id="<?php echo $msg['id']; ?>">
-                        <span class="t-bubble-meta t-border-bottom pb-2 mb-2 d-block">
-                            [ <?php echo $msg['timestamp']; ?> UTC ] <strong class="text-success"><?php echo htmlspecialchars($msg['author_alias'] ?? 'COMMANDER'); ?></strong>
-                        </span>
+                        <div class="t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap">
+                            <span>
+                                [ <?php echo $msg['timestamp']; ?> UTC ] <strong class="text-success"><?php echo htmlspecialchars($msg['author_alias'] ?? 'COMMANDER'); ?></strong>
+                            </span>
+                            <?php if(!empty($msg['expiry_date'])) echo '<span class="t-badge danger t-flicker">[ 👻 GHOSTED ]</span>'; ?>
+                        </div>
                         <p class="m-0" style="font-size: 14px;">
                             <?php echo nl2br($msg['content']); ?>
                         </p>
