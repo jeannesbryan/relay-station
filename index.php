@@ -107,7 +107,7 @@ try {
         <?php endif; ?>
 
         <footer class="text-center mt-5 text-muted fs-small t-border-top pt-4 mb-4">
-            <p class="mb-2">POWERED BY <a href="https://github.com/jeannesbryan/relay-station" class="text-success font-bold" style="text-decoration: none;">RELAY PROTOCOL</a> v3.0.4</p>
+            <p class="mb-2">POWERED BY <a href="https://github.com/jeannesbryan/relay-station" class="text-success font-bold" style="text-decoration: none;">RELAY PROTOCOL</a> v3.0.6</p>
             <a href="console.php" class="text-muted" style="text-decoration: none;">[ SYSADMIN_LOGIN ] <span class="t-blink text-success">_</span></a>
         </footer>
     </div>

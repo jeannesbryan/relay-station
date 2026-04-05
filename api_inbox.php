@@ -1,5 +1,5 @@
 <?php
-// RELAY STATION: ATMOSPHERIC SHIELD & INBOX (V3.0 - SECURE RATE LIMITED)
+// RELAY STATION: ATMOSPHERIC SHIELD & INBOX (V3.0.6 - WITH DM ALERTS)
 // Endpoint untuk menerima sinyal (POST) dari planet lain, dilengkapi Firewall Anti-Spam dan Anti-Spoofing.
 
 header('Content-Type: application/json');
@@ -96,6 +96,21 @@ try {
         ':media_url' => $media_url ? htmlspecialchars($media_url) : null,
         ':ip' => $sender_ip
     ]);
+
+    // ==========================================
+    // 🔔 [ NOTIFICATION TRIGGER: NEW DIRECT MESSAGE ]
+    // ==========================================
+    if ($visibility === 'direct') {
+        // Cek apakah notif DM dari node ini sudah ada yang belum dibaca (Mencegah spam lonceng)
+        $stmt_alert_check = $db->prepare("SELECT COUNT(*) FROM alerts WHERE type = 'new_dm' AND from_planet = :url AND is_read = 0");
+        $stmt_alert_check->execute([':url' => $normalized_from]);
+        
+        if ($stmt_alert_check->fetchColumn() == 0) {
+            $stmt_alert = $db->prepare("INSERT INTO alerts (type, from_planet, is_read) VALUES ('new_dm', :url, 0)");
+            $stmt_alert->execute([':url' => $normalized_from]);
+        }
+    }
+    // ==========================================
 
     http_response_code(200);
     echo json_encode([
