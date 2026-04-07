@@ -4,23 +4,78 @@
 // ==========================================
 session_start();
 $db_file = 'data/relay_core.sqlite';
+date_default_timezone_set('UTC'); 
 
 try {
     $db_auth = new PDO("sqlite:" . $db_file);
     $db_auth->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $db_auth->setAttribute(PDO::ATTR_TIMEOUT, 5); 
+    
+    // ==========================================
+    // 🛡️ ANTI-BRUTE FORCE LOCKOUT PROTOCOL
+    // ==========================================
+    $user_ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN';
+    $is_locked = false;
+    $login_error = null;
+
+    // Pindai riwayat IP
+    $stmt_check_ip = $db_auth->prepare("SELECT attempts, lockout_until FROM login_attempts WHERE ip_address = :ip");
+    $stmt_check_ip->execute([':ip' => $user_ip]);
+    $ip_status = $stmt_check_ip->fetch(PDO::FETCH_ASSOC);
+
+    if ($ip_status && $ip_status['lockout_until']) {
+        $lockout_end = strtotime($ip_status['lockout_until']);
+        if (time() < $lockout_end) {
+            $is_locked = true;
+            $time_left = ceil(($lockout_end - time()) / 60);
+            $login_error = "SYSTEM LOCKED. WAIT {$time_left} MINUTE(S).";
+        } else {
+            // Masa tahanan habis, hapus catatan buruk IP ini
+            $db_auth->prepare("DELETE FROM login_attempts WHERE ip_address = :ip")->execute([':ip' => $user_ip]);
+            $ip_status = false; 
+        }
+    }
+    // ==========================================
+
     $stmt = $db_auth->query("SELECT config_value FROM system_config WHERE config_key = 'captain_hash'");
     $captain_hash = $stmt->fetchColumn();
-    $stmt = null; $db_auth = null; 
+    $stmt = null; 
+
 } catch (PDOException $e) {
     die("[ CRITICAL ERROR ] Cannot read station encryption: " . $e->getMessage());
 }
 
-if (isset($_POST['passcode'])) {
+if (isset($_POST['passcode']) && !$is_locked) {
     if (password_verify($_POST['passcode'], $captain_hash)) {
+        // [ LOGIN SUKSES ] -> Bersihkan jejak IP jika ada
+        if ($ip_status) {
+            $db_auth->prepare("DELETE FROM login_attempts WHERE ip_address = :ip")->execute([':ip' => $user_ip]);
+        }
         $_SESSION['relay_auth'] = true;
         header("Location: console.php"); exit;
-    } else { $login_error = "ACCESS DENIED. INTRUDER LOGGED."; }
+    } else { 
+        // [ LOGIN GAGAL ] -> Tambah pelanggaran
+        if ($ip_status) {
+            $attempts = $ip_status['attempts'] + 1;
+            if ($attempts >= 5) {
+                // Eksekusi penguncian 15 menit
+                $lock_time = date('Y-m-d H:i:s', strtotime('+15 minutes'));
+                $stmt = $db_auth->prepare("UPDATE login_attempts SET attempts = :attempts, lockout_until = :lock_time WHERE ip_address = :ip");
+                $stmt->execute([':attempts' => $attempts, ':lock_time' => $lock_time, ':ip' => $user_ip]);
+                $is_locked = true;
+                $login_error = "SYSTEM LOCKED. WAIT 15 MINUTE(S).";
+            } else {
+                $stmt = $db_auth->prepare("UPDATE login_attempts SET attempts = :attempts WHERE ip_address = :ip");
+                $stmt->execute([':attempts' => $attempts, ':ip' => $user_ip]);
+                $login_error = "ACCESS DENIED. " . (5 - $attempts) . " ATTEMPTS LEFT.";
+            }
+        } else {
+            // Pelanggaran pertama
+            $stmt = $db_auth->prepare("INSERT INTO login_attempts (ip_address, attempts) VALUES (:ip, 1)");
+            $stmt->execute([':ip' => $user_ip]);
+            $login_error = "ACCESS DENIED. 4 ATTEMPTS LEFT.";
+        }
+    }
 }
 
 if (isset($_GET['logout'])) {
@@ -36,19 +91,33 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     echo '</head><body class="t-crt t-center-screen">';
     echo '<div class="t-center-box t-card danger mb-0">';
     echo '<h2 class="t-card-header t-flicker">> RESTRICTED AREA</h2>';
-    if(isset($login_error)) echo '<div class="t-alert danger text-left mb-3">' . $login_error . '</div>';
+    
+    if($login_error) echo '<div class="t-alert danger text-left mb-3">' . $login_error . '</div>';
+    
     echo '<form method="POST" class="m-0">';
     echo '<div class="t-input-group mb-4">';
-    echo '<input type="password" id="loginPass" name="passcode" class="t-input text-center font-bold" placeholder="ENTER PASSCODE" autofocus style="letter-spacing: 5px;">';
-    echo '<button type="button" class="t-input-action-btn" onclick="Terminal.toggleInputAction(\'loginPass\', this)">[ SHOW ]</button>';
+    
+    // UI: Blokir input jika terkunci
+    if ($is_locked) {
+        echo '<input type="password" disabled class="t-input text-center font-bold" placeholder="[ RADAR FROZEN ]" style="letter-spacing: 5px;">';
+    } else {
+        echo '<input type="password" id="loginPass" name="passcode" class="t-input text-center font-bold" placeholder="ENTER PASSCODE" autofocus style="letter-spacing: 5px;">';
+        echo '<button type="button" class="t-input-action-btn" onclick="Terminal.toggleInputAction(\'loginPass\', this)">[ SHOW ]</button>';
+    }
+    
     echo '</div>';
-    echo '<button type="submit" class="t-btn danger w-100 font-bold t-glow">[ OVERRIDE_SYSTEM ]</button>';
+    
+    // UI: Blokir tombol jika terkunci
+    if ($is_locked) {
+        echo '<button type="button" disabled class="t-btn w-100 font-bold" style="border-color: var(--t-red); color: var(--t-red); opacity: 0.5; cursor: not-allowed;">[ SYSTEM_LOCKED ]</button>';
+    } else {
+        echo '<button type="submit" class="t-btn danger w-100 font-bold t-glow">[ OVERRIDE_SYSTEM ]</button>';
+    }
+    
     echo '</form></div>';
     echo '<script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>';
     echo '</body></html>'; exit;
 }
-
-date_default_timezone_set('UTC'); 
 
 try {
     $db = new PDO("sqlite:" . $db_file);
@@ -95,7 +164,6 @@ try {
             $ghost = !empty($msg['expiry_date']) ? '<span class="t-badge danger t-flicker">[ 👻 GHOSTED ]</span>' : '';
             $src = $msg['is_remote'] ? 'INCOMING FROM:' : 'LOCAL_AUTHOR:';
             $content = nl2br($msg['content']);
-            // EFEK HOLOGRAM
             $img = !empty($msg['media_url']) ? '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" class="t-hologram-img" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>' : '';
             
             echo "<div class='t-card mb-3 p-3 transmission-card' data-id='{$msg['id']}'>
@@ -114,7 +182,6 @@ try {
     $query_stars = $db->query("SELECT * FROM following ORDER BY added_at DESC");
     $star_chart = $query_stars->fetchAll(PDO::FETCH_ASSOC);
 
-    // [ BACA NOTIFIKASI ALERTS ]
     $stmt_alerts = $db->query("SELECT * FROM alerts WHERE is_read = 0 ORDER BY id DESC");
     $active_alerts = $stmt_alerts->fetchAll(PDO::FETCH_ASSOC);
 
@@ -135,15 +202,8 @@ try {
     <link rel="manifest" href="manifest.json">
     <style>
         #installAppBtn { display: none; }
-        /* TACTICAL HOLOGRAM IMAGE FX */
-        .t-hologram-img {
-            filter: grayscale(100%) sepia(100%) hue-rotate(80deg) brightness(0.7) contrast(1.2);
-            transition: 0.3s ease-in-out;
-            cursor: crosshair;
-        }
-        .t-hologram-img:hover {
-            filter: grayscale(0%) sepia(0%) hue-rotate(0deg) brightness(1) contrast(1);
-        }
+        .t-hologram-img { filter: grayscale(100%) sepia(100%) hue-rotate(80deg) brightness(0.7) contrast(1.2); transition: 0.3s ease-in-out; cursor: crosshair; }
+        .t-hologram-img:hover { filter: grayscale(0%) sepia(0%) hue-rotate(0deg) brightness(1) contrast(1); }
     </style>
 </head>
 <body class="t-crt">
@@ -158,7 +218,7 @@ try {
         <nav class="t-navbar mt-3 mb-4">
             <div class="t-nav-brand">
                 <span class="t-led-dot t-led-green"></span> RELAY_STATION 
-                <span class="fs-small text-muted fw-normal ml-2">v3.0.6</span>
+                <span class="fs-small text-muted fw-normal ml-2">v4.0</span>
                 <?php if (count($active_alerts) > 0): ?>
                     <span class="text-warning t-blink ml-2 fw-normal" style="font-size:12px;">[ 🔔 <?php echo count($active_alerts); ?> NEW ]</span>
                 <?php endif; ?>
@@ -252,21 +312,18 @@ try {
                     <div class="t-list-group mb-4">
                         <?php foreach ($active_alerts as $alert): ?>
                             <div class="t-card p-2 mb-2" style="border-color: var(--t-yellow); background: rgba(255,255,0,0.05);">
-                                
                                 <?php if ($alert['type'] == 'new_follower'): ?>
                                     <div class="fs-small text-warning mb-2">> PING DETECTED: <br><strong style="word-break: break-all;"><?php echo htmlspecialchars($alert['from_planet']); ?></strong></div>
                                     <div class="d-flex gap-2">
                                         <button onclick="acceptHandshake('<?php echo htmlspecialchars($alert['from_planet']); ?>', <?php echo $alert['id']; ?>)" class="t-btn warning w-100" style="padding:4px; font-size:11px;">[ FOLLOW BACK ]</button>
                                         <a href="core/alert_action.php?id=<?php echo $alert['id']; ?>" class="t-btn danger w-100 text-center" style="padding:4px; font-size:11px; text-decoration:none;">[ IGNORE ]</a>
                                     </div>
-                                
                                 <?php elseif ($alert['type'] == 'new_dm'): ?>
                                     <div class="fs-small text-success mb-2">> ✉️ INCOMING LASER LINK: <br><strong style="word-break: break-all;"><?php echo htmlspecialchars($alert['from_planet']); ?></strong></div>
                                     <div class="d-flex gap-2">
                                         <a href="core/alert_action.php?id=<?php echo $alert['id']; ?>&redirect=direct" class="t-btn w-100 text-center" style="padding:4px; font-size:11px; text-decoration:none; border-color: var(--t-green); color: var(--t-green);">[ READ MESSAGE ]</a>
                                     </div>
                                 <?php endif; ?>
-
                             </div>
                         <?php endforeach; ?>
                     </div>
@@ -324,7 +381,6 @@ try {
         document.getElementById('broadcast-form').addEventListener('submit', () => { Terminal.splash.show('> TRANSMITTING_SIGNAL...'); });
         document.getElementById('follow-form').addEventListener('submit', () => { Terminal.splash.show('> LOCKING_COORDINATES...'); });
 
-        // TACTICAL HANDSHAKE ACCEPTOR
         function acceptHandshake(url, alertId) {
             document.getElementById('target-planet-input').value = url;
             Terminal.splash.show('> PROCESSING_MUTUAL_LINK...');
@@ -339,7 +395,6 @@ try {
         installBtn.addEventListener('click', async () => { if (deferredPrompt !== null) { deferredPrompt.prompt(); const { outcome } = await deferredPrompt.userChoice; if (outcome === 'accepted') { installBtn.style.display = 'none'; } deferredPrompt = null; } });
         window.addEventListener('appinstalled', () => { installBtn.style.display = 'none'; });
 
-        // 🖼️ 1. CLIENT-SIDE IMAGE COMPRESSION
         const mediaInput = document.getElementById('media-input');
         const fileDisplay = document.getElementById('file-name-display');
         
@@ -375,7 +430,6 @@ try {
             });
         }
 
-        // 🔄 [ BUG FIX 3: CURSOR-BASED INFINITE SCROLL ]
         let isFetching = false;
         const loadMoreEl = document.getElementById('load-more');
         
@@ -406,7 +460,6 @@ try {
             observer.observe(loadMoreEl);
         }
 
-        // 📡 RADAR SWEEP (PING ALL)
         function runRadarSweep() {
             const btn = document.getElementById('btn-sweep');
             btn.innerText = '[ PINGING... ]'; btn.disabled = true;

@@ -78,6 +78,7 @@ When a new version is available, you do not need to download anything manually. 
 
 * **Rate Limiting & Anti-Spoofing:** The `api_inbox.php` endpoint restricts incoming transmissions to a maximum of 5 signals per minute per IP address.
 * **Symmetrical Firewall:** Incoming signals are only accepted if the sender's planet URL is explicitly listed in your Star Chart (Following list). Unknown intruders are automatically dropped.
+* **Anti-Brute Force Lockout:** The system automatically freezes the login radar for 15 minutes after 5 consecutive failed passcode attempts to protect against dictionary and bot attacks.
 * **Encrypted Sessions:** Console access requires a Master Passcode hashed securely within the SQLite core memory.
 
 ---
