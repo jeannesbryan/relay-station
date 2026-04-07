@@ -1,4 +1,5 @@
 <?php
+require_once 'core/ssl_shield.php';
 // RELAY STATION: ATMOSPHERIC SHIELD & INBOX (V3.0.6 - WITH DM ALERTS)
 // Endpoint untuk menerima sinyal (POST) dari planet lain, dilengkapi Firewall Anti-Spam dan Anti-Spoofing.
 

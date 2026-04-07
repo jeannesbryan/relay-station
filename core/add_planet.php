@@ -1,5 +1,6 @@
 <?php
-// RELAY STATION: STAR CHART UPDATER (V3.0.6 - HANDSHAKE PROTOCOL)
+require_once 'ssl_shield.php';
+// RELAY STATION: STAR CHART UPDATER
 
 session_start();
 

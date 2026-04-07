@@ -1,4 +1,5 @@
 <?php
+require_once 'ssl_shield.php';
 // RELAY STATION: OVER-THE-AIR (OTA) UPDATER ENGINE
 // Menarik rilis terbaru dari pusat komando dan menambal sistem secara otomatis.
 

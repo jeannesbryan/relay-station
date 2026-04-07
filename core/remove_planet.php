@@ -1,5 +1,6 @@
 <?php
-// RELAY STATION: DISCONNECT PROTOCOL (V3.0.3)
+require_once 'ssl_shield.php';
+// RELAY STATION: DISCONNECT PROTOCOL
 // Menghapus koordinat planet dari radar secara manual (Unfollow)
 
 session_start();

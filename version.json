@@ -1,5 +1,5 @@
 {
-    "version": "4.0",
-    "changelog": "THE IRON BUNKER V4.0 (Part 1):\n- [SECURITY] Anti-Brute Force Lockout: The console radar now automatically freezes for 15 minutes after 5 failed passcode attempts to prevent dictionary and bot attacks.",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v4.0/Relay-OTA-Update-v4.0.zip"
+    "version": "4.1",
+    "changelog": "THE IRON BUNKER V4.1 (Part 2):\n- [SECURITY] Strict SSL Enforcement: All endpoints, including UI and API P2P receivers, now strictly require encrypted HTTPS connections. Unsecured HTTP requests will be automatically redirected or rejected to prevent Man-in-the-Middle (MitM) attacks.\n- [SYSTEM] Auto-Versioning & Coordinates: The Public Hologram (index.php) now automatically detects the station's dynamic routing coordinates and current software version.",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v4.1/Relay-OTA-Update-v4.1.zip"
 }

@@ -14,6 +14,7 @@ Relay Station is designed to be extremely lightweight and can be hosted on a $1/
 * **PHP:** Version 7.4, 8.0, 8.1, or 8.2+
 * **Database:** SQLite3 (No MySQL/MariaDB setup required)
 * **Required PHP Extensions:** `cURL` (for transmission), `pdo_sqlite` (for core memory), `ZipArchive` (for OTA updates & installation), and `gd` or `fileinfo` (for media processing).
+* **Security:** An active SSL/HTTPS certificate is strictly required for the domain/subdomain.
 
 ---
 
@@ -79,6 +80,7 @@ When a new version is available, you do not need to download anything manually. 
 * **Rate Limiting & Anti-Spoofing:** The `api_inbox.php` endpoint restricts incoming transmissions to a maximum of 5 signals per minute per IP address.
 * **Symmetrical Firewall:** Incoming signals are only accepted if the sender's planet URL is explicitly listed in your Star Chart (Following list). Unknown intruders are automatically dropped.
 * **Anti-Brute Force Lockout:** The system automatically freezes the login radar for 15 minutes after 5 consecutive failed passcode attempts to protect against dictionary and bot attacks.
+* **Strict SSL Enforcement:** All endpoints, including UI and API P2P receivers, strictly require encrypted HTTPS connections. Unsecured HTTP requests are automatically redirected or rejected to prevent packet sniffing.
 * **Encrypted Sessions:** Console access requires a Master Passcode hashed securely within the SQLite core memory.
 
 ---

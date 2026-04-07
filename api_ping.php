@@ -1,4 +1,5 @@
 <?php
+require_once 'core/ssl_shield.php';
 // RELAY STATION: IDENTIFICATION BEACON (FEDIVERSE EDITION V3.0)
 // Merespon sinyal "Ping" dari stasiun asing untuk membuktikan validitas node dan kapabilitasnya.
 

@@ -1,5 +1,6 @@
 <?php
-// RELAY STATION: ALERT HANDLER (V3.0.6)
+require_once 'ssl_shield.php';
+// RELAY STATION: ALERT HANDLER
 
 session_start();
 if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) { die("UNAUTHORIZED"); }

@@ -1,4 +1,5 @@
 <?php
+require_once 'ssl_shield.php';
 // ==========================================================
 // RELAY STATION: TRANSMITTER ENGINE (CONSTELLATION NETWORK)
 // Handles Public, Direct, Ghost Protocol messages, and Media
@@ -21,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $expiry_date = date('Y-m-d H:i:s', strtotime('+24 hours'));
     }
 
-    // 3. Identify Local Commander Coordinates (Subfolder Aware V3.0.4)
+    // 3. Identify Local Commander Coordinates (Subfolder Aware)
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
     $host = $_SERVER['HTTP_HOST'];
     

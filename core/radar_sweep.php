@@ -1,5 +1,6 @@
 <?php
-// RELAY STATION: DEEP SPACE RADAR SWEEP (V3.0.1)
+require_once 'ssl_shield.php';
+// RELAY STATION: DEEP SPACE RADAR SWEEP
 // Mengeping semua node di Star Chart. Jika node mati/error, akan dihapus.
 
 session_start();

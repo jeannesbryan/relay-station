@@ -1,4 +1,5 @@
 <?php
+require_once 'core/ssl_shield.php';
 // ==========================================
 // 🔒 [ SECURITY OVERRIDE: ENCRYPTED SESSION ]
 // ==========================================

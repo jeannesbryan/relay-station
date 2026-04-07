@@ -1,10 +1,22 @@
 <?php
+require_once 'core/ssl_shield.php';
 // ==========================================
 // 🔒 [ SECURITY OVERRIDE: ENCRYPTED SESSION ]
 // ==========================================
 session_start();
 $db_file = 'data/relay_core.sqlite';
 date_default_timezone_set('UTC'); 
+
+// ==========================================
+// ⚙️ [ AUTO-DETECT SYSTEM VERSION ]
+// ==========================================
+$station_version = 'UNKNOWN';
+if (file_exists('version.json')) {
+    $v_data = json_decode(file_get_contents('version.json'), true);
+    if (isset($v_data['version'])) {
+        $station_version = $v_data['version'];
+    }
+}
 
 try {
     $db_auth = new PDO("sqlite:" . $db_file);
@@ -18,7 +30,7 @@ try {
     $is_locked = false;
     $login_error = null;
 
-    // Pindai riwayat IP
+    // Scan IP history
     $stmt_check_ip = $db_auth->prepare("SELECT attempts, lockout_until FROM login_attempts WHERE ip_address = :ip");
     $stmt_check_ip->execute([':ip' => $user_ip]);
     $ip_status = $stmt_check_ip->fetch(PDO::FETCH_ASSOC);
@@ -30,7 +42,7 @@ try {
             $time_left = ceil(($lockout_end - time()) / 60);
             $login_error = "SYSTEM LOCKED. WAIT {$time_left} MINUTE(S).";
         } else {
-            // Masa tahanan habis, hapus catatan buruk IP ini
+            // Lockout expired, delete bad IP record
             $db_auth->prepare("DELETE FROM login_attempts WHERE ip_address = :ip")->execute([':ip' => $user_ip]);
             $ip_status = false; 
         }
@@ -47,18 +59,18 @@ try {
 
 if (isset($_POST['passcode']) && !$is_locked) {
     if (password_verify($_POST['passcode'], $captain_hash)) {
-        // [ LOGIN SUKSES ] -> Bersihkan jejak IP jika ada
+        // [ LOGIN SUCCESS ] -> Clear IP trace if any
         if ($ip_status) {
             $db_auth->prepare("DELETE FROM login_attempts WHERE ip_address = :ip")->execute([':ip' => $user_ip]);
         }
         $_SESSION['relay_auth'] = true;
         header("Location: console.php"); exit;
     } else { 
-        // [ LOGIN GAGAL ] -> Tambah pelanggaran
+        // [ LOGIN FAILED ] -> Add violation
         if ($ip_status) {
             $attempts = $ip_status['attempts'] + 1;
             if ($attempts >= 5) {
-                // Eksekusi penguncian 15 menit
+                // Execute 15-minute lockout
                 $lock_time = date('Y-m-d H:i:s', strtotime('+15 minutes'));
                 $stmt = $db_auth->prepare("UPDATE login_attempts SET attempts = :attempts, lockout_until = :lock_time WHERE ip_address = :ip");
                 $stmt->execute([':attempts' => $attempts, ':lock_time' => $lock_time, ':ip' => $user_ip]);
@@ -70,7 +82,7 @@ if (isset($_POST['passcode']) && !$is_locked) {
                 $login_error = "ACCESS DENIED. " . (5 - $attempts) . " ATTEMPTS LEFT.";
             }
         } else {
-            // Pelanggaran pertama
+            // First violation
             $stmt = $db_auth->prepare("INSERT INTO login_attempts (ip_address, attempts) VALUES (:ip, 1)");
             $stmt->execute([':ip' => $user_ip]);
             $login_error = "ACCESS DENIED. 4 ATTEMPTS LEFT.";
@@ -97,7 +109,7 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     echo '<form method="POST" class="m-0">';
     echo '<div class="t-input-group mb-4">';
     
-    // UI: Blokir input jika terkunci
+    // UI: Lock input if frozen
     if ($is_locked) {
         echo '<input type="password" disabled class="t-input text-center font-bold" placeholder="[ RADAR FROZEN ]" style="letter-spacing: 5px;">';
     } else {
@@ -107,7 +119,7 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     
     echo '</div>';
     
-    // UI: Blokir tombol jika terkunci
+    // UI: Lock button if frozen
     if ($is_locked) {
         echo '<button type="button" disabled class="t-btn w-100 font-bold" style="border-color: var(--t-red); color: var(--t-red); opacity: 0.5; cursor: not-allowed;">[ SYSTEM_LOCKED ]</button>';
     } else {
@@ -218,14 +230,14 @@ try {
         <nav class="t-navbar mt-3 mb-4">
             <div class="t-nav-brand">
                 <span class="t-led-dot t-led-green"></span> RELAY_STATION 
-                <span class="fs-small text-muted fw-normal ml-2">v4.0</span>
+                <span class="fs-small text-muted fw-normal ml-2">v<?php echo htmlspecialchars($station_version); ?></span>
                 <?php if (count($active_alerts) > 0): ?>
                     <span class="text-warning t-blink ml-2 fw-normal" style="font-size:12px;">[ 🔔 <?php echo count($active_alerts); ?> NEW ]</span>
                 <?php endif; ?>
             </div>
             <div class="t-nav-menu">
                 <button id="installAppBtn" class="t-btn t-btn-sm">[ INSTALL PWA ]</button>
-                <a href="core/updater.php" class="t-btn warning t-btn-sm" title="Periksa Pembaruan Sistem">[ SYS_UPDATE ]</a>
+                <a href="core/updater.php" class="t-btn warning t-btn-sm" title="Check System Update">[ SYS_UPDATE ]</a>
                 <a href="console.php?logout=true" class="t-btn danger t-btn-sm">> LOGOUT</a>
             </div>
         </nav>
@@ -331,7 +343,7 @@ try {
 
                 <h2 class="t-card-header d-flex justify-content-between align-items-center">
                     > 🗺️ STAR_CHART
-                    <button onclick="runRadarSweep()" id="btn-sweep" class="t-btn warning t-btn-sm" title="Ping All Nodes">[ PING ALL ]</button>
+                    <button onclick="runRadarSweep()" id="btn-sweep" class="t-btn warning t-btn-sm" title="Ping All Nodes">[ 📡 ]</button>
                 </h2>
                 <div class="t-card p-2 mb-3 mt-3">
                     <?php if(isset($_GET['error']) && $_GET['error'] == 'invalid_node'): ?>
@@ -360,13 +372,16 @@ try {
                     <?php if (empty($star_chart)): ?>
                         <div class="t-list-item"><span class="t-list-item-subtitle text-center">[ NO NODES FOLLOWED ]</span></div>
                     <?php else: ?>
-                        <?php foreach ($star_chart as $star): ?>
+                        <?php foreach ($star_chart as $star): 
+                            // Membersihkan label versi [vX.X] dari nama alias
+                            $clean_alias = trim(preg_replace('/\[v\d+(\.\d+)*\]/i', '', $star['alias']));
+                        ?>
                             <div class="t-list-item d-flex justify-content-between align-items-center" style="cursor: default;">
                                 <div style="overflow: hidden;">
-                                    <span class="t-list-item-title"><?php echo htmlspecialchars($star['alias']); ?></span>
+                                    <span class="t-list-item-title"><?php echo htmlspecialchars($clean_alias); ?></span>
                                     <span class="t-list-item-subtitle text-success"><?php echo htmlspecialchars($star['planet_url']); ?></span>
                                 </div>
-                                <a href="core/remove_planet.php?id=<?php echo $star['id']; ?>" class="t-btn danger t-btn-sm ml-2" style="padding: 2px 6px; border-radius: 0; min-width: auto;" title="Disconnect" onclick="return confirm('> PERINGATAN: Putuskan koneksi dari node ini?');">[ X ]</a>
+                                <a href="core/remove_planet.php?id=<?php echo $star['id']; ?>" class="t-btn danger t-btn-sm ml-2" style="padding: 2px 6px; border-radius: 0; min-width: auto;" title="Disconnect" onclick="return confirm('> WARNING: Disconnect from this node?');">[ ❌ ]</a>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>

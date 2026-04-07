@@ -1,0 +1,11 @@
+# ==========================================
+# RELAY STATION: STEALTH CLOAK
+# Mengabaikan file data dan media rahasia
+# ==========================================
+
+# Abaikan folder memori & media
+/data/
+/media/
+
+# Abaikan file arsip installer & OTA
+*.zip

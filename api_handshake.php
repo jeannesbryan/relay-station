@@ -1,4 +1,5 @@
 <?php
+require_once 'core/ssl_shield.php';
 // RELAY STATION: HANDSHAKE PROTOCOL (V3.0.6)
 // Menerima sinyal bahwa stasiun asing baru saja mem-follow node ini.
 

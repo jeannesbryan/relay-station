@@ -1,6 +1,25 @@
 <?php
-// RELAY STATION: PUBLIC HOLOGRAM (FEDIVERSE EDITION V3.0)
+require_once 'core/ssl_shield.php';
+// RELAY STATION: PUBLIC HOLOGRAM
 // The station's interface for public visitors (Read-Only)
+
+// ==========================================
+// 📡 [ AUTO-DETECT SYSTEM COORDINATES ]
+// ==========================================
+$host = $_SERVER['HTTP_HOST'] ?? 'UNKNOWN_NODE';
+$base_path = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
+$station_coordinates = $host . $base_path;
+
+// ==========================================
+// ⚙️ [ AUTO-DETECT SYSTEM VERSION ]
+// ==========================================
+$station_version = 'UNKNOWN';
+if (file_exists('version.json')) {
+    $v_data = json_decode(file_get_contents('version.json'), true);
+    if (isset($v_data['version'])) {
+        $station_version = $v_data['version'];
+    }
+}
 
 $db_file = 'data/relay_core.sqlite';
 
@@ -67,7 +86,7 @@ try {
     <div class="t-container mt-4">
         <header class="text-center mb-5 t-border-bottom pb-4">
             <h1 class="mb-1 text-success"><span class="t-led-dot t-led-green t-blink" style="margin-right: 8px; transform: translateY(-3px);"></span>RELAY_STATION</h1>
-            <p class="text-muted m-0 fs-small">COORDINATES: relay.npc.my.id | COMMANDER: ONLINE</p>
+            <p class="text-muted m-0 fs-small">COORDINATES: <?php echo htmlspecialchars($station_coordinates); ?> | COMMANDER: ONLINE</p>
         </header>
 
         <main id="signal-log">
@@ -107,7 +126,7 @@ try {
         <?php endif; ?>
 
         <footer class="text-center mt-5 text-muted fs-small t-border-top pt-4 mb-4">
-            <p class="mb-2">POWERED BY <a href="https://github.com/jeannesbryan/relay-station" class="text-success font-bold" style="text-decoration: none;">RELAY PROTOCOL</a> v3.0.6</p>
+            <p class="mb-2">POWERED BY <a href="https://github.com/jeannesbryan/relay-station" class="text-success font-bold" style="text-decoration: none;">RELAY PROTOCOL</a> v<?php echo htmlspecialchars($station_version); ?></p>
             <a href="console.php" class="text-muted" style="text-decoration: none;">[ SYSADMIN_LOGIN ] <span class="t-blink text-success">_</span></a>
         </footer>
     </div>
