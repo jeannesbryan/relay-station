@@ -23,7 +23,7 @@ Relay Station is designed to be extremely lightweight and can be hosted on a $1/
 * **100% Data Sovereignty:** You own the server, the database, and the media. There is no central database.
 * **Constellation Star Chart (P2P Following):** Connect to other Relay nodes simply by adding their URL. The system automatically validates the target node and prevents echo chambers via built-in Anti-Self Loop protocols.
 * **The Handshake Protocol (Smart Alerts):** When a foreign node locks onto your coordinates or sends a Laser Link, your console's alert system will notify you, allowing for seamless one-click mutual connections without sacrificing your firewall.
-* **Public Hologram & Laser Links:** Broadcast messages to the public timeline of your entire constellation, or send target-specific Direct Messages (Laser Links). Media attachments feature an immersive cyberpunk Hologram FX.
+* **Public Hologram & E2E Laser Links:** Broadcast messages to the public timeline, or send target-specific Direct Messages (Laser Links) secured by native RSA-OAEP 2048-bit End-to-End Encryption. Media attachments feature an immersive cyberpunk Hologram FX.
 * **Ghost Protocol:** Transmit highly sensitive text and media that will automatically and physically self-destruct from the SQLite database and the server's hard drive after 24 hours. 
 * **Deep Space Radar Sweep:** An automated pinging system that scans your Star Chart. If an allied node goes offline or is destroyed, your radar automatically purges them from your database to keep your node clean.
 * **Client-Side WebP Compression:** Uploaded media is compressed into lightweight WebP format directly in the user's browser before transmission, saving massive server bandwidth.
@@ -77,6 +77,7 @@ When a new version is available, you do not need to download anything manually. 
 
 ## 🛡️ Security Systems
 
+* **End-to-End Encryption (E2E):** Direct messages use Dual-Ciphertext Routing. Your Private Key never leaves your browser's local storage, ensuring a Zero-Knowledge architecture—even server admins cannot read the SQLite database.
 * **Rate Limiting & Anti-Spoofing:** The `api_inbox.php` endpoint restricts incoming transmissions to a maximum of 5 signals per minute per IP address.
 * **Symmetrical Firewall:** Incoming signals are only accepted if the sender's planet URL is explicitly listed in your Star Chart (Following list). Unknown intruders are automatically dropped.
 * **Anti-Brute Force Lockout:** The system automatically freezes the login radar for 15 minutes after 5 consecutive failed passcode attempts to protect against dictionary and bot attacks.
