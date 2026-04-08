@@ -1,7 +1,7 @@
 <?php
 require_once 'ssl_shield.php';
 // ==========================================================
-// RELAY STATION: TRANSMITTER ENGINE (CONSTELLATION NETWORK)
+// 🚀 RELAY STATION: TRANSMITTER ENGINE (E2E ENABLED)
 // Handles Public, Direct, Ghost Protocol messages, and Media
 // ==========================================================
 
@@ -12,6 +12,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // 1. Capture Console Input
     $content = trim($_POST['content'] ?? '');
+    
+    // [ E2E NEW ] Tangkap ciphertext khusus untuk database lokal
+    $content_local = trim($_POST['content_local'] ?? $content); 
+    
     $visibility = $_POST['visibility'] ?? 'public';
     $target_planet = trim($_POST['target_planet'] ?? '');
     
@@ -26,11 +30,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
     $host = $_SERVER['HTTP_HOST'];
     
-    // Track dynamic folder path (since this script is in /core/, we must go up 1 level)
+    // Track dynamic folder path
     $script_path = dirname($_SERVER['SCRIPT_NAME']); 
     $base_path = dirname($script_path); 
-
-    // Ensure no double slash at the end
     if ($base_path === '\\' || $base_path === '/') {
         $base_path = '';
     }
@@ -46,28 +48,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // ==========================================
-    // 🖼️ [ MEDIA PROCESSING ]
+    // 🖼️ [ MEDIA PROCESSING ] (With Fallback)
     // ==========================================
     $media_url = null;
-    if (isset($_FILES['media']) && $_FILES['media']['error'] === UPLOAD_ERR_OK) {
-        $upload_dir = '../media/';
+    $upload_dir = '../media/';
+    if (!is_dir($upload_dir)) { mkdir($upload_dir, 0755, true); }
+
+    // Prioritas 1: Tangkap Base64 dari JS Compressor (WebP)
+    if (!empty($_POST['media_base64'])) {
+        $media_base64 = $_POST['media_base64'];
+        list($type, $media_base64) = explode(';', $media_base64);
+        list(, $media_base64)      = explode(',', $media_base64);
+        $media_data = base64_decode($media_base64);
         
-        // Create directory if it doesn't exist (Failsafe)
-        if (!is_dir($upload_dir)) {
-            mkdir($upload_dir, 0755, true);
+        $filename = uniqid('sig_') . '.webp';
+        $filepath = $upload_dir . $filename;
+        
+        if (file_put_contents($filepath, $media_data)) {
+            $media_url = rtrim($my_planet_url, '/') . '/media/' . $filename;
         }
-        
+    } 
+    // Prioritas 2: Fallback jika JS dimatikan di browser (Upload Murni)
+    elseif (isset($_FILES['media']) && $_FILES['media']['error'] === UPLOAD_ERR_OK) {
         $file_ext = strtolower(pathinfo($_FILES['media']['name'], PATHINFO_EXTENSION));
         $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
         
         if (in_array($file_ext, $allowed_ext)) {
-            // Generate unique filename
             $filename = uniqid('sig_') . '.' . $file_ext;
             $target_file = $upload_dir . $filename;
             
-            // Save physical image to LOCAL server (Sovereign Storage)
             if (move_uploaded_file($_FILES['media']['tmp_name'], $target_file)) {
-                // Assemble absolute URL for Constellation transmission
                 $media_url = rtrim($my_planet_url, '/') . '/media/' . $filename;
             }
         }
@@ -81,7 +91,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 4. WRITE TO LOCAL CORE MEMORY
         $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, target_planet, is_remote, author_alias, expiry_date, media_url) VALUES (:content, :visibility, :target, 0, :author, :expiry, :media)");
         $stmt->execute([
-            ':content' => htmlspecialchars($content),
+            // [ E2E NEW ] Simpan ciphertext lokal (dikunci pakai Public Key sendiri)
+            ':content' => $content_local, 
             ':visibility' => $visibility,
             ':target' => $target_planet,
             ':author' => $author_alias,
@@ -91,7 +102,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         // 5. ASSEMBLE JSON CAPSULE
         $payload = json_encode([
-            "content" => $content,
+            // [ E2E NEW ] Dikirim ke luar (dikunci pakai Public Key target)
+            "content" => $content, 
             "author_alias" => $author_alias,
             "from_planet" => $my_planet_url,
             "visibility" => $visibility,
@@ -103,6 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($visibility === 'public') {
             // [ SCATTER BEAM ] Broadcast to all allies in the Star Chart
+            // [ BUG FIX ] Menggunakan tabel "following" yang benar
             $query = $db->query("SELECT planet_url FROM following");
             $allies = $query->fetchAll(PDO::FETCH_ASSOC);
             
@@ -120,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'Content-Type: application/json',
                         'Content-Length: ' . strlen($payload)
                     ]);
-                    curl_setopt($curl_array[$i], CURLOPT_TIMEOUT, 5); // Anti-hang timeout
+                    curl_setopt($curl_array[$i], CURLOPT_TIMEOUT, 5); 
                     curl_multi_add_handle($mh, $curl_array[$i]);
                 }
                 
@@ -147,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'Content-Type: application/json',
                     'Content-Length: ' . strlen($payload)
                 ]);
-                curl_setopt($ch, CURLOPT_TIMEOUT, 5); // Anti-hang timeout
+                curl_setopt($ch, CURLOPT_TIMEOUT, 5); 
                 curl_exec($ch);
                 curl_close($ch);
             }

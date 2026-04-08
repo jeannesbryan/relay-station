@@ -30,7 +30,6 @@ try {
     $is_locked = false;
     $login_error = null;
 
-    // Scan IP history
     $stmt_check_ip = $db_auth->prepare("SELECT attempts, lockout_until FROM login_attempts WHERE ip_address = :ip");
     $stmt_check_ip->execute([':ip' => $user_ip]);
     $ip_status = $stmt_check_ip->fetch(PDO::FETCH_ASSOC);
@@ -42,12 +41,10 @@ try {
             $time_left = ceil(($lockout_end - time()) / 60);
             $login_error = "SYSTEM LOCKED. WAIT {$time_left} MINUTE(S).";
         } else {
-            // Lockout expired, delete bad IP record
             $db_auth->prepare("DELETE FROM login_attempts WHERE ip_address = :ip")->execute([':ip' => $user_ip]);
             $ip_status = false; 
         }
     }
-    // ==========================================
 
     $stmt = $db_auth->query("SELECT config_value FROM system_config WHERE config_key = 'captain_hash'");
     $captain_hash = $stmt->fetchColumn();
@@ -59,18 +56,15 @@ try {
 
 if (isset($_POST['passcode']) && !$is_locked) {
     if (password_verify($_POST['passcode'], $captain_hash)) {
-        // [ LOGIN SUCCESS ] -> Clear IP trace if any
         if ($ip_status) {
             $db_auth->prepare("DELETE FROM login_attempts WHERE ip_address = :ip")->execute([':ip' => $user_ip]);
         }
         $_SESSION['relay_auth'] = true;
         header("Location: console.php"); exit;
     } else { 
-        // [ LOGIN FAILED ] -> Add violation
         if ($ip_status) {
             $attempts = $ip_status['attempts'] + 1;
             if ($attempts >= 5) {
-                // Execute 15-minute lockout
                 $lock_time = date('Y-m-d H:i:s', strtotime('+15 minutes'));
                 $stmt = $db_auth->prepare("UPDATE login_attempts SET attempts = :attempts, lockout_until = :lock_time WHERE ip_address = :ip");
                 $stmt->execute([':attempts' => $attempts, ':lock_time' => $lock_time, ':ip' => $user_ip]);
@@ -82,7 +76,6 @@ if (isset($_POST['passcode']) && !$is_locked) {
                 $login_error = "ACCESS DENIED. " . (5 - $attempts) . " ATTEMPTS LEFT.";
             }
         } else {
-            // First violation
             $stmt = $db_auth->prepare("INSERT INTO login_attempts (ip_address, attempts) VALUES (:ip, 1)");
             $stmt->execute([':ip' => $user_ip]);
             $login_error = "ACCESS DENIED. 4 ATTEMPTS LEFT.";
@@ -109,7 +102,6 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     echo '<form method="POST" class="m-0">';
     echo '<div class="t-input-group mb-4">';
     
-    // UI: Lock input if frozen
     if ($is_locked) {
         echo '<input type="password" disabled class="t-input text-center font-bold" placeholder="[ RADAR FROZEN ]" style="letter-spacing: 5px;">';
     } else {
@@ -119,7 +111,6 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     
     echo '</div>';
     
-    // UI: Lock button if frozen
     if ($is_locked) {
         echo '<button type="button" disabled class="t-btn w-100 font-bold" style="border-color: var(--t-red); color: var(--t-red); opacity: 0.5; cursor: not-allowed;">[ SYSTEM_LOCKED ]</button>';
     } else {
@@ -135,6 +126,18 @@ try {
     $db = new PDO("sqlite:" . $db_file);
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $db->setAttribute(PDO::ATTR_TIMEOUT, 5);
+    
+    // ==========================================
+    // 🔐 [ AJAX ENDPOINT: SAVE PUBLIC KEY ]
+    // ==========================================
+    if (isset($_POST['action']) && $_POST['action'] === 'save_pubkey') {
+        $pubkey = trim($_POST['public_key'] ?? '');
+        if (!empty($pubkey)) {
+            $stmt = $db->prepare("INSERT OR REPLACE INTO system_config (config_key, config_value) VALUES ('public_key', :val)");
+            $stmt->execute([':val' => $pubkey]);
+        }
+        exit;
+    }
     
     // ==========================================
     // 🧹 [ ADVANCED GARBAGE COLLECTOR V3.0.2 ]
@@ -373,7 +376,6 @@ try {
                         <div class="t-list-item"><span class="t-list-item-subtitle text-center">[ NO NODES FOLLOWED ]</span></div>
                     <?php else: ?>
                         <?php foreach ($star_chart as $star): 
-                            // Membersihkan label versi [vX.X] dari nama alias
                             $clean_alias = trim(preg_replace('/\[v\d+(\.\d+)*\]/i', '', $star['alias']));
                         ?>
                             <div class="t-list-item d-flex justify-content-between align-items-center" style="cursor: default;">
@@ -393,6 +395,52 @@ try {
 
     <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
+        // ==========================================
+        // 🔐 [ E2E ENCRYPTION: KEYPAIR RADAR ]
+        // ==========================================
+        async function initCryptoRadar() {
+            const privKey = localStorage.getItem('relay_privkey');
+            const pubKey = localStorage.getItem('relay_pubkey');
+
+            if (!privKey || !pubKey) {
+                console.log('> GENERATING QUANTUM ENCRYPTION KEYS...');
+                try {
+                    const keyPair = await window.crypto.subtle.generateKey(
+                        {
+                            name: "RSA-OAEP",
+                            modulusLength: 2048,
+                            publicExponent: new Uint8Array([1, 0, 1]),
+                            hash: "SHA-256"
+                        },
+                        true,
+                        ["encrypt", "decrypt"]
+                    );
+
+                    const exportedPriv = await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+                    const exportedPub = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
+
+                    const privB64 = btoa(String.fromCharCode.apply(null, new Uint8Array(exportedPriv)));
+                    const pubB64 = btoa(String.fromCharCode.apply(null, new Uint8Array(exportedPub)));
+
+                    localStorage.setItem('relay_privkey', privB64);
+                    localStorage.setItem('relay_pubkey', pubB64);
+
+                    // Send Public Key to Core Memory (SQLite)
+                    const formData = new FormData();
+                    formData.append('action', 'save_pubkey');
+                    formData.append('public_key', pubB64);
+
+                    await fetch('console.php', { method: 'POST', body: formData });
+                    Terminal.toast('[✓] E2E KEYS GENERATED', 'success');
+                } catch (err) {
+                    console.error('[!] ENCRYPTION MODULE FAILED:', err);
+                    Terminal.toast('[!] E2E KEY GENERATION FAILED', 'danger');
+                }
+            }
+        }
+        window.addEventListener('DOMContentLoaded', initCryptoRadar);
+
+
         document.getElementById('broadcast-form').addEventListener('submit', () => { Terminal.splash.show('> TRANSMITTING_SIGNAL...'); });
         document.getElementById('follow-form').addEventListener('submit', () => { Terminal.splash.show('> LOCKING_COORDINATES...'); });
 
