@@ -1,18 +1,16 @@
 <?php
 require_once 'core/ssl_shield.php';
-// RELAY STATION: PUBLIC HOLOGRAM
+// ==========================================
+// 📡 RELAY STATION: PUBLIC HOLOGRAM
 // The station's interface for public visitors (Read-Only)
+// ==========================================
 
-// ==========================================
-// 📡 [ AUTO-DETECT SYSTEM COORDINATES ]
-// ==========================================
+// ⚙️ [ AUTO-DETECT SYSTEM COORDINATES ]
 $host = $_SERVER['HTTP_HOST'] ?? 'UNKNOWN_NODE';
 $base_path = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
 $station_coordinates = $host . $base_path;
 
-// ==========================================
 // ⚙️ [ AUTO-DETECT SYSTEM VERSION ]
-// ==========================================
 $station_version = 'UNKNOWN';
 if (file_exists('version.json')) {
     $v_data = json_decode(file_get_contents('version.json'), true);
@@ -26,41 +24,46 @@ $db_file = 'data/relay_core.sqlite';
 try {
     $db = new PDO("sqlite:" . $db_file);
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    
+
     // ==========================================
+    // 🚧 [ CHECK STATION MODE: BUNKER STATUS ]
+    // ==========================================
+    $stmt_bunker = $db->query("SELECT config_value FROM system_config WHERE config_key = 'bunker_mode'");
+    $bunker_mode = $stmt_bunker->fetchColumn() ?: '0';
+
     // 🔄 [ AJAX ENDPOINT: CURSOR-BASED PAGINATION ]
-    // ==========================================
     if (isset($_GET['last_id'])) {
+        // Blokir akses data AJAX jika dalam mode Bunker
+        if ($bunker_mode == '1') { exit; }
+
         $last_id = (int)$_GET['last_id'];
-        // Fetch messages with an ID smaller (older) than the last message on the screen
-        $stmt = $db->prepare("SELECT * FROM transmissions WHERE visibility = 'public' AND is_remote = 0 AND id < :last_id ORDER BY id DESC LIMIT 15");
+        $stmt = $db->prepare("SELECT * FROM transmissions WHERE visibility = 'public' AND is_remote = 1 AND id < :last_id ORDER BY id DESC LIMIT 15");
         $stmt->execute([':last_id' => $last_id]);
         $transmissions = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($transmissions as $msg) {
-            // [ BUG FIX 1 ]: Free from double escaping
-            $content = nl2br($msg['content']);
-            $img = !empty($msg['media_url']) ? '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" alt="Broadcast Media" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>' : '';
-            $ghost = !empty($msg['expiry_date']) ? '<span class="t-badge danger t-flicker">[ 👻 GHOSTED ]</span>' : '';
+            $author = htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN');
+            $img = !empty($msg['media_url']) ? '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" class="t-hologram-img" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>' : '';
             
-            // [ BUG FIX 3 ]: Add 'transmission-card' class and 'data-id' attribute
-            echo "<div class='t-card mb-3 transmission-card' data-id='{$msg['id']}'>
-                    <div class='t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap'>
-                        <span>[ {$msg['timestamp']} UTC ] <strong class='text-success'>" . htmlspecialchars($msg['author_alias'] ?? 'COMMANDER') . "</strong></span>
-                        $ghost
+            echo "<div class='t-card mb-3 p-3 transmission-card' data-id='{$msg['id']}'>
+                    <div class='t-bubble-meta t-border-bottom pb-2 mb-2'>
+                        <span>[ {$msg['timestamp']} UTC ] INCOMING FROM: <strong class='text-success'>$author</strong></span>
                     </div>
-                    <p class='m-0' style='font-size: 14px;'>$content</p>
-                    $img
+                    <p class='m-0' style='font-size: 14px;'>".nl2br(htmlspecialchars($msg['content']))."</p> $img
                   </div>";
         }
         exit;
     }
-    // ==========================================
 
-    $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'public' AND is_remote = 0 ORDER BY id DESC LIMIT 15");
-    $transmissions = $query->fetchAll(PDO::FETCH_ASSOC);
+    // Jika Mode Bunker aktif, jangan tarik data pesan ke memori
+    $transmissions = [];
+    if ($bunker_mode == '0') {
+        $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'public' AND is_remote = 1 ORDER BY id DESC LIMIT 15");
+        $transmissions = $query->fetchAll(PDO::FETCH_ASSOC);
+    }
+
 } catch (PDOException $e) {
-    die("<h3 class='t-alert danger'>[ SIGNAL LOST ] Station is currently under maintenance.</h3>");
+    die("<h3 class='t-alert danger'>[ CRITICAL ERROR ] Core Memory Offline.</h3>");
 }
 ?>
 
@@ -70,80 +73,85 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RELAY | Public Hologram</title>
-    
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.css">
+    <style>
+        .t-hologram-img { filter: grayscale(100%) sepia(100%) hue-rotate(80deg) brightness(0.7) contrast(1.2); }
+        .bunker-seal { min-height: 60vh; display: flex; flex-direction: column; justify-content: center; align-items: center; border: 2px dashed var(--t-red); background: rgba(255,0,65,0.05); }
+    </style>
 </head>
 <body class="t-crt">
 
-    <div id="splash-overlay" class="t-splash">
-        <div class="font-bold text-success" id="splash-text" style="font-size: 1.1rem; letter-spacing: 2px; text-shadow: 0 0 8px currentColor;">
-            > INTERCEPTING_PUBLIC_HOLOGRAM<span class="t-loading-dots"></span>
-        </div>
-    </div>
-
-    <div class="t-container mt-4">
-        <header class="text-center mb-5 t-border-bottom pb-4">
-            <h1 class="mb-1 text-success"><span class="t-led-dot t-led-green t-blink" style="margin-right: 8px; transform: translateY(-3px);"></span>RELAY_STATION</h1>
-            <p class="text-muted m-0 fs-small">COORDINATES: <?php echo htmlspecialchars($station_coordinates); ?> | COMMANDER: ONLINE</p>
+    <div class="t-container mt-5">
+        <header class="text-center mb-5">
+            <h1 class="text-success font-bold mb-0" style="letter-spacing: 5px;">> RELAY_STATION</h1>
+            <div class="text-muted fs-small mt-2">[ COORDINATES: <?php echo htmlspecialchars($station_coordinates); ?> ]</div>
         </header>
 
-        <main id="signal-log">
-            <h3 class="text-success mb-3">> PUBLIC_BROADCAST_LOG:</h3>
-            
-            <?php if (empty($transmissions)): ?>
-                <div class="t-card text-center text-muted p-5" style="border-style: dashed;">
-                    <p class="m-0">[ ARCHIVE EMPTY. COMMANDER HAS NOT TRANSMITTED ANY SIGNALS. ]</p>
+        <?php if ($bunker_mode == '1'): ?>
+            <div class="bunker-seal t-card danger text-center p-5">
+                <h2 class="t-flicker text-danger font-bold mb-3" style="font-size: 2rem;">[ 🚧 RESTRICTED AREA ]</h2>
+                <p class="text-muted mb-4">> THIS NODE HAS ENTERED PRIVATE BUNKER MODE.<br>> ALL PUBLIC TRANSMISSIONS ARE CURRENTLY SEALED.</p>
+                <div class="t-loading-dots text-danger" style="font-size: 24px;"></div>
+                <div class="mt-5">
+                    <a href="console.php" class="t-btn danger">[ COMMANDER_LOGIN ]</a>
                 </div>
-            <?php else: ?>
-                <?php foreach ($transmissions as $msg): ?>
-                    <div class="t-card mb-3 transmission-card" data-id="<?php echo $msg['id']; ?>">
-                        <div class="t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap">
-                            <span>
-                                [ <?php echo $msg['timestamp']; ?> UTC ] <strong class="text-success"><?php echo htmlspecialchars($msg['author_alias'] ?? 'COMMANDER'); ?></strong>
-                            </span>
-                            <?php if(!empty($msg['expiry_date'])) echo '<span class="t-badge danger t-flicker">[ 👻 GHOSTED ]</span>'; ?>
-                        </div>
-                        <p class="m-0" style="font-size: 14px;">
-                            <?php echo nl2br($msg['content']); ?>
-                        </p>
-
-                        <?php if(!empty($msg['media_url'])): ?>
-                            <div class="mt-3 text-center">
-                                <img src="<?php echo htmlspecialchars($msg['media_url']); ?>" alt="Broadcast Media" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;">
-                            </div>
+            </div>
+        <?php else: ?>
+            <div class="t-grid-layout" style="grid-template-columns: 1fr;">
+                <main class="t-main-panel">
+                    <h2 class="t-card-header">> 📡 INCOMING_TRANSMISSIONS_LOG</h2>
+                    
+                    <div id="signal-log">
+                        <?php if (empty($transmissions)): ?>
+                            <div class="text-center text-muted py-5 t-border border-dashed">[ NO PUBLIC SIGNALS DETECTED ]</div>
+                        <?php else: ?>
+                            <?php foreach ($transmissions as $msg): ?>
+                                <div class="t-card mb-3 p-3 transmission-card" data-id="<?php echo $msg['id']; ?>">
+                                    <div class="t-bubble-meta t-border-bottom pb-2 mb-2">
+                                        <span>[ <?php echo $msg['timestamp']; ?> UTC ] INCOMING FROM: <strong class="text-success"><?php echo htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN'); ?></strong></span>
+                                    </div>
+                                    <p class="m-0" style="font-size: 14px;">
+                                        <?php echo nl2br(htmlspecialchars($msg['content'])); ?>
+                                    </p>
+                                    <?php if(!empty($msg['media_url'])): ?>
+                                        <div class="mt-3 text-center">
+                                            <img src="<?php echo htmlspecialchars($msg['media_url']); ?>" class="t-hologram-img" alt="Transmission" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;">
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endforeach; ?>
                         <?php endif; ?>
                     </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </main>
 
-        <?php if (!empty($transmissions)): ?>
-            <div id="load-more" class="text-center mt-3 text-muted" style="border-top:1px dashed var(--t-green); padding-top:15px; padding-bottom:30px;">
-                [ SCROLL DOWN TO SCAN DEEP SPACE ]
+                    <?php if (!empty($transmissions)): ?>
+                        <div id="load-more" class="text-center mt-3 text-muted" style="border-top:1px dashed var(--t-green); padding-top:15px; padding-bottom:30px;">
+                            [ SCROLL DOWN TO SCAN DEEP SPACE ]
+                        </div>
+                    <?php endif; ?>
+                </main>
             </div>
         <?php endif; ?>
 
-        <footer class="text-center mt-5 text-muted fs-small t-border-top pt-4 mb-4">
-            <p class="mb-2">POWERED BY <a href="https://github.com/jeannesbryan/relay-station" class="text-success font-bold" style="text-decoration: none;">RELAY PROTOCOL</a> v<?php echo htmlspecialchars($station_version); ?></p>
-            <a href="console.php" class="text-muted" style="text-decoration: none;">[ SYSADMIN_LOGIN ] <span class="t-blink text-success">_</span></a>
+        <footer class="text-center text-muted t-border-top pt-4 pb-5 mt-5">
+            <p class="mb-2">> SIGNAL STATUS: <?php echo ($bunker_mode == '1') ? '<span class="text-danger">[ LOCKED ]</span>' : '<span class="text-success">[ BROADCASTING ]</span>'; ?></p>
+            <p class="fs-small m-0">STATION_OS v<?php echo htmlspecialchars($station_version); ?> | COORDINATES: <?php echo htmlspecialchars($station_coordinates); ?></p>
         </footer>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
-        // 🔄 [ BUG FIX 3: CURSOR-BASED INFINITE SCROLL ]
+        // 🔄 [ BUG FIX: CURSOR-BASED INFINITE SCROLL ]
         let isFetching = false;
         const loadMoreEl = document.getElementById('load-more');
+        const bunkerActive = <?php echo $bunker_mode; ?>;
         
-        if (loadMoreEl) {
+        if (loadMoreEl && bunkerActive === 0) {
             const observer = new IntersectionObserver((entries) => {
                 if(entries[0].isIntersecting && !isFetching) {
                     isFetching = true;
                     loadMoreEl.innerText = '[ RECEIVING SIGNALS... ]';
                     
-                    // Find the ID of the last message on the screen
                     const cards = document.querySelectorAll('.transmission-card');
                     if (cards.length === 0) return;
                     const lastId = cards[cards.length - 1].getAttribute('data-id');

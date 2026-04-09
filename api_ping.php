@@ -10,17 +10,25 @@ header('Access-Control-Allow-Origin: *'); // Mengizinkan stasiun lain untuk memb
 
 $db_file = 'data/relay_core.sqlite';
 $public_key = null;
+$bunker_mode = '0';
 
-// Mengambil Gembok (Public Key) dari Core Memory
+// Mengambil Gembok (Public Key) & Status Bunker dari Core Memory
 try {
     if (file_exists($db_file)) {
         $db = new PDO("sqlite:" . $db_file);
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $db->setAttribute(PDO::ATTR_TIMEOUT, 5);
         
+        // Menarik Public Key
         $stmt = $db->query("SELECT config_value FROM system_config WHERE config_key = 'public_key'");
         if ($stmt) {
             $public_key = $stmt->fetchColumn();
+        }
+
+        // [ NEW ] Menarik status Bunker Mode
+        $stmt_bunker = $db->query("SELECT config_value FROM system_config WHERE config_key = 'bunker_mode'");
+        if ($stmt_bunker) {
+            $bunker_mode = $stmt_bunker->fetchColumn() ?: '0';
         }
     }
 } catch (Exception $e) {
@@ -36,21 +44,27 @@ if (file_exists('version.json')) {
     }
 }
 
+// Menyesuaikan Pesan Radar berdasarkan Mode
+$radar_msg = ($bunker_mode === '1') 
+    ? 'Awaiting handshakes. Private bunker node active.' 
+    : 'Awaiting transmissions. Iron Bunker node active.';
+
 // Format Tanda Tangan Digital RELAY STATION
 echo json_encode([
     'status' => 'online',
     'software' => 'relay_station',
     'version' => $station_version,
     'protocol' => 'fediverse_lightweight',
+    'private_node' => ($bunker_mode === '1') ? true : false, // [ NEW ] Mengibarkan bendera akun privat
     'features' => [
         'media_hotlinking' => true,
         'ghost_protocol' => true,
         'direct_messaging' => true,
         'base64_compression' => true,
         'rate_limiting' => true,
-        'e2e_encryption' => true // [ NEW ] Tanda bahwa node ini mendukung E2E
+        'e2e_encryption' => true 
     ],
-    'public_key' => $public_key, // [ NEW ] Menyiarkan Gembok ke alam semesta
-    'message' => 'Awaiting transmissions. Iron Bunker node active.'
+    'public_key' => $public_key, 
+    'message' => $radar_msg
 ]);
 exit;

@@ -138,6 +138,16 @@ try {
         }
         exit;
     }
+
+    // ==========================================
+    // 🚧 [ AJAX ENDPOINT: TOGGLE BUNKER MODE ]
+    // ==========================================
+    if (isset($_POST['action']) && $_POST['action'] === 'toggle_bunker') {
+        $new_state = ($_POST['state'] === '1') ? '1' : '0';
+        $stmt = $db->prepare("INSERT OR REPLACE INTO system_config (config_key, config_value) VALUES ('bunker_mode', :val)");
+        $stmt->execute([':val' => $new_state]);
+        exit;
+    }
     
     // ==========================================
     // 🧹 [ ADVANCED GARBAGE COLLECTOR V3.0.2 ]
@@ -199,6 +209,10 @@ try {
 
     $stmt_alerts = $db->query("SELECT * FROM alerts WHERE is_read = 0 ORDER BY id DESC");
     $active_alerts = $stmt_alerts->fetchAll(PDO::FETCH_ASSOC);
+
+    // [ NEW ] Mengambil Status Bunker Mode
+    $stmt_bunker = $db->query("SELECT config_value FROM system_config WHERE config_key = 'bunker_mode'");
+    $bunker_mode = $stmt_bunker->fetchColumn() ?: '0';
 
 } catch (PDOException $e) {
     die("<h3 class='t-alert danger'>[ CRITICAL ERROR ] Core Memory Offline.</h3>");
@@ -322,6 +336,21 @@ try {
                     </a>
                 </div>
 
+                <h2 class="t-card-header">> 🚧 STATION MODE</h2>
+                <div class="t-card p-2 mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2" style="border-color: var(--t-<?php echo ($bunker_mode == '1') ? 'red' : 'green'; ?>); background: rgba(<?php echo ($bunker_mode == '1') ? '255,0,65' : '0,255,65'; ?>,0.05);" id="bunker-card">
+                    <div>
+                        <span class="font-bold text-<?php echo ($bunker_mode == '1') ? 'danger t-blink' : 'success'; ?>" id="bunker-label">
+                            <?php echo ($bunker_mode == '1') ? '[ PRIVATE NODE ]' : '[ PUBLIC NODE ]'; ?>
+                        </span>
+                        <div class="fs-small text-muted mt-1" id="bunker-desc">
+                            <?php echo ($bunker_mode == '1') ? '> Hologram sealed. Alerts active.' : '> Hologram online. Open to public.'; ?>
+                        </div>
+                    </div>
+                    <label class="t-checkbox-label m-0">
+                        <input type="checkbox" id="bunker-toggle" <?php echo ($bunker_mode == '1') ? 'checked' : ''; ?>><span class="t-checkmark"></span>
+                    </label>
+                </div>
+
                 <?php if (!empty($active_alerts)): ?>
                     <h2 class="t-card-header text-warning t-blink">> 🔔 ALERTS (<?php echo count($active_alerts); ?>)</h2>
                     <div class="t-list-group mb-4">
@@ -395,6 +424,39 @@ try {
 
     <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
+        // ==========================================
+        // 🚧 [ BUNKER MODE: THE TOGGLE ENGINE ]
+        // ==========================================
+        const bunkerToggle = document.getElementById('bunker-toggle');
+        if (bunkerToggle) {
+            bunkerToggle.addEventListener('change', async function() {
+                const newState = this.checked ? '1' : '0';
+                const label = document.getElementById('bunker-label');
+                const desc = document.getElementById('bunker-desc');
+                const card = document.getElementById('bunker-card');
+                
+                if(newState === '1') {
+                    label.className = 'font-bold text-danger t-blink';
+                    label.innerText = '[ PRIVATE NODE ]';
+                    desc.innerText = '> Hologram sealed. Alerts active.';
+                    card.style.borderColor = 'var(--t-red)';
+                    card.style.background = 'rgba(255,0,65,0.05)';
+                } else {
+                    label.className = 'font-bold text-success';
+                    label.innerText = '[ PUBLIC NODE ]';
+                    desc.innerText = '> Hologram online. Open to public.';
+                    card.style.borderColor = 'var(--t-green)';
+                    card.style.background = 'rgba(0,255,65,0.05)';
+                }
+
+                const formData = new FormData();
+                formData.append('action', 'toggle_bunker');
+                formData.append('state', newState);
+                await fetch('console.php', { method: 'POST', body: formData });
+                Terminal.toast('[✓] STATION MODE UPDATED', newState === '1' ? 'danger' : 'success');
+            });
+        }
+
         // ==========================================
         // 🔐 [ E2E ENCRYPTION: KEYPAIR RADAR ]
         // ==========================================

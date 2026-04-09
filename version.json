@@ -1,5 +1,5 @@
 {
-    "version": "4.2",
-    "changelog": "THE IRON BUNKER V4.2 (THE HOLY GRAIL):\n- [SECURITY] End-to-End Encryption (E2E): Direct Messages (Laser Links) are now secured with RSA-OAEP 2048-bit quantum-grade encryption natively via Web Crypto API. Your Private Key never leaves the browser.\n- [SYSTEM] Dual-Ciphertext Routing: Payloads are encrypted twice (for the target and for the local archive), ensuring absolute zero-knowledge storage. Even server admins cannot read the SQLite database.\n- [UI] Real-Time Decryption: Decryption happens blazingly fast on the client-side UI without any external dependencies.",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v4.2/Relay-OTA-Update-v4.2.zip"
+    "version": "4.3",
+    "changelog": "THE IRON BUNKER V4.3 (STEALTH EDITION):\n- [PRIVACY] Bunker Mode (Private Node): Toggle your station into stealth mode at any time. Your public hologram timeline is now sealed from outsiders.\n- [NETWORK] Bouncer Protocol: Incoming follower requests are held in your console for manual approval (Accept/Reject/Ignore).",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v4.3/Relay-OTA-Update-v4.3.zip"
 }
