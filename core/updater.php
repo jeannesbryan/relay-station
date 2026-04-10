@@ -10,9 +10,16 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     die("[ FATAL ERROR ] Akses Ditolak.");
 }
 
-// 1. Konfigurasi Pusat Komando
+// 1. Konfigurasi Pusat Komando & Deteksi Versi Lokal
 $remote_beacon_url = 'https://raw.githubusercontent.com/jeannesbryan/relay-station/main/version.json?t=' . time();
-$current_version = '5.2'; // Versi stasiun saat ini
+
+$current_version = 'UNKNOWN';
+if (file_exists('../version.json')) {
+    $v_data = json_decode(file_get_contents('../version.json'), true);
+    if (isset($v_data['version'])) {
+        $current_version = $v_data['version'];
+    }
+}
 
 // 2. Cek Pembaruan (Ping Remote)
 $ch = curl_init($remote_beacon_url);
@@ -70,9 +77,13 @@ if (version_compare($update_data['version'], $current_version, '>')) {
             unlink($temp_zip);
             
             // D. (Opsional) Jalankan skrip migrasi database jika ada
-            if (file_exists('../core/upgrade_db.php')) {
-                include '../core/upgrade_db.php';
-                unlink('../core/upgrade_db.php'); // Hapus setelah dieksekusi
+            // Ditingkatkan untuk mendukung penamaan seperti upgrade_db_v5.3.php
+            $upgrade_scripts = glob('../core/upgrade_db*.php');
+            if ($upgrade_scripts) {
+                foreach ($upgrade_scripts as $script) {
+                    include $script;
+                    unlink($script); // Hapus setelah dieksekusi agar bersih
+                }
             }
             
             echo "<script>alert('Pembaruan ke v{$update_data['version']} BERHASIL!'); window.location.href='../console.php';</script>";

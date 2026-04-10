@@ -128,12 +128,22 @@ try {
     if (isset($_POST['action']) && $_POST['action'] === 'save_control_room') {
         $name = trim($_POST['station_name'] ?? 'RELAY_STATION');
         $bio = trim($_POST['station_bio'] ?? '');
+        $bunker = ($_POST['bunker_mode'] === '1') ? '1' : '0';
+        $new_pass = trim($_POST['station_passcode'] ?? '');
         
-        $db->prepare("DELETE FROM system_config WHERE config_key IN ('station_name', 'station_bio')")->execute();
+        $db->prepare("DELETE FROM system_config WHERE config_key IN ('station_name', 'station_bio', 'bunker_mode')")->execute();
         
         $stmt = $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES (?, ?)");
         $stmt->execute(['station_name', $name]);
         $stmt->execute(['station_bio', $bio]);
+        $stmt->execute(['bunker_mode', $bunker]);
+
+        // Jika passcode baru diisi, timpa hash yang lama
+        if (!empty($new_pass)) {
+            $hash = password_hash($new_pass, PASSWORD_DEFAULT);
+            $db->prepare("DELETE FROM system_config WHERE config_key = 'captain_hash'")->execute();
+            $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('captain_hash', ?)")->execute([$hash]);
+        }
         exit;
     }
 
@@ -145,15 +155,6 @@ try {
             $stmt = $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('public_key', :val)");
             $stmt->execute([':val' => $pubkey]);
         }
-        exit;
-    }
-
-    // 🚧 [ AJAX ENDPOINT: TOGGLE BUNKER MODE ]
-    if (isset($_POST['action']) && $_POST['action'] === 'toggle_bunker') {
-        $new_state = ($_POST['state'] === '1') ? '1' : '0';
-        $db->prepare("DELETE FROM system_config WHERE config_key = 'bunker_mode'")->execute();
-        $stmt = $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('bunker_mode', :val)");
-        $stmt->execute([':val' => $new_state]);
         exit;
     }
     
@@ -259,14 +260,14 @@ try {
                 <span class="t-led-dot t-led-green"></span> <?php echo htmlspecialchars($station_name); ?> 
                 <span class="fs-small text-muted fw-normal ml-2">v<?php echo htmlspecialchars($station_version); ?></span>
                 <?php if (count($active_alerts) > 0): ?>
-                    <span class="text-warning t-blink ml-2 fw-normal" style="font-size:12px;">[ 🔔 <?php echo count($active_alerts); ?> NEW ]</span>
+                    <span id="nav-alert-counter" class="text-warning t-blink ml-2 fw-normal" style="font-size:12px;">[ 🔔 <?php echo count($active_alerts); ?> NEW ]</span>
                 <?php endif; ?>
             </div>
             <div class="t-nav-menu">
-                <button onclick="document.getElementById('control-room-modal').style.display='flex';" class="t-btn t-btn-sm" title="Configure Station">[ CONTROL_ROOM ]</button>
-                <button id="installAppBtn" class="t-btn t-btn-sm">[ INSTALL PWA ]</button>
-                <a href="core/updater.php" class="t-btn warning t-btn-sm" title="Check System Update">[ SYS_UPDATE ]</a>
-                <a href="console.php?logout=true" class="t-btn danger t-btn-sm">> LOGOUT</a>
+                <button onclick="document.getElementById('control-room-modal').style.display='flex';" class="t-btn t-btn-sm" title="Configure Station">[ ⚙️ ]</button>
+                <button id="installAppBtn" class="t-btn t-btn-sm">[ 📥 ]</button>
+                <a href="core/updater.php" class="t-btn warning t-btn-sm" title="Check System Update">[ 🔄 ]</a>
+                <a href="console.php?logout=true" class="t-btn danger t-btn-sm">[ ➜] ]</a>
             </div>
         </nav>
 
@@ -347,24 +348,9 @@ try {
                     </a>
                 </div>
 
-                <h2 class="t-card-header">> 🚧 STATION MODE</h2>
-                <div class="t-card p-2 mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2" style="border-color: var(--t-<?php echo ($bunker_mode == '1') ? 'red' : 'green'; ?>); background: rgba(<?php echo ($bunker_mode == '1') ? '255,0,65' : '0,255,65'; ?>,0.05);" id="bunker-card">
-                    <div>
-                        <span class="font-bold text-<?php echo ($bunker_mode == '1') ? 'danger t-blink' : 'success'; ?>" id="bunker-label">
-                            <?php echo ($bunker_mode == '1') ? '[ PRIVATE NODE ]' : '[ PUBLIC NODE ]'; ?>
-                        </span>
-                        <div class="fs-small text-muted mt-1" id="bunker-desc">
-                            <?php echo ($bunker_mode == '1') ? '> Hologram sealed. Alerts active.' : '> Hologram online. Open to public.'; ?>
-                        </div>
-                    </div>
-                    <label class="t-checkbox-label m-0">
-                        <input type="checkbox" id="bunker-toggle" <?php echo ($bunker_mode == '1') ? 'checked' : ''; ?>><span class="t-checkmark"></span>
-                    </label>
-                </div>
-
                 <?php if (!empty($active_alerts)): ?>
-                    <h2 class="t-card-header text-warning t-blink">> 🔔 ALERTS (<?php echo count($active_alerts); ?>)</h2>
-                    <div class="t-list-group mb-4">
+                    <h2 id="sidebar-alert-header" class="t-card-header text-warning t-blink">> 🔔 ALERTS (<span id="sidebar-alert-counter"><?php echo count($active_alerts); ?></span>)</h2>
+                    <div id="sidebar-alert-list" class="t-list-group mb-4">
                         <?php foreach ($active_alerts as $alert): ?>
                             <div class="t-card p-2 mb-2" style="border-color: var(--t-yellow); background: rgba(255,255,0,0.05);">
                                 <?php if ($alert['type'] == 'new_follower'): ?>
@@ -448,16 +434,35 @@ try {
                 <span class="font-bold text-success">> 🎛️ THE_CONTROL_ROOM</span>
                 <button type="button" onclick="document.getElementById('control-room-modal').style.display='none';" class="t-btn danger t-btn-sm" style="padding: 2px 8px;">[ X ]</button>
             </div>
-            <div class="p-3">
+            <div class="p-3" style="max-height: 80vh; overflow-y: auto;">
                 <form id="control-room-form" class="m-0">
                     <div class="mb-3">
                         <label class="t-form-label">> STATION_NAME</label>
                         <input type="text" id="cr-name" class="t-input font-bold text-success" value="<?php echo htmlspecialchars($station_name); ?>" maxlength="30" required>
                     </div>
+                    
                     <div class="mb-3">
                         <label class="t-form-label">> STATION_BIO / BROADCAST_MESSAGE</label>
                         <textarea id="cr-bio" class="t-textarea" rows="3" maxlength="160" placeholder="> Enter public station description..."><?php echo htmlspecialchars($station_bio); ?></textarea>
                     </div>
+                    
+                    <div class="mb-3 t-card p-2" style="border-color: var(--t-green); background: rgba(0,255,65,0.05);">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="font-bold text-warning">[ PRIVATE NODE / BUNKER MODE ]</span>
+                                <div class="fs-small text-muted mt-1">> Seal Hologram from public. Manual follower approval.</div>
+                            </div>
+                            <label class="t-checkbox-label m-0">
+                                <input type="checkbox" id="cr-bunker" <?php echo ($bunker_mode == '1') ? 'checked' : ''; ?>><span class="t-checkmark"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="t-form-label">> CHANGE_MASTER_PASSCODE</label>
+                        <input type="password" id="cr-passcode" class="t-input" placeholder="> Leave blank to keep current passcode...">
+                    </div>
+
                     <button type="submit" class="t-btn warning w-100 font-bold t-glow">[ APPLY_CONFIGURATION ]</button>
                 </form>
             </div>
@@ -574,11 +579,29 @@ try {
             oscillator.stop();
             btn.innerText = '[ ✓ DECODED ]';
             
-            // Remove the alert silently via Background Request
+            // Remove the alert silently via Background Request & Clean UI
             fetch('core/alert_action.php?id=' + alertId + '&ajax=1').then(() => {
                 setTimeout(() => {
                     const card = btn.closest('.t-card');
-                    if(card) card.remove();
+                    if(card) {
+                        card.remove();
+                        // Dynamic Alert Counter Decrement
+                        const sideCounter = document.getElementById('sidebar-alert-counter');
+                        const navCounter = document.getElementById('nav-alert-counter');
+                        if (sideCounter) {
+                            let count = parseInt(sideCounter.innerText) - 1;
+                            if (count <= 0) {
+                                const sideHeader = document.getElementById('sidebar-alert-header');
+                                const sideList = document.getElementById('sidebar-alert-list');
+                                if(sideHeader) sideHeader.remove();
+                                if(sideList) sideList.remove();
+                                if(navCounter) navCounter.remove();
+                            } else {
+                                sideCounter.innerText = count;
+                                if(navCounter) navCounter.innerHTML = `[ 🔔 ${count} NEW ]`;
+                            }
+                        }
+                    }
                 }, 2000);
             });
         }
@@ -595,11 +618,15 @@ try {
                 
                 const newName = document.getElementById('cr-name').value;
                 const newBio = document.getElementById('cr-bio').value;
+                const isBunker = document.getElementById('cr-bunker').checked ? '1' : '0';
+                const newPass = document.getElementById('cr-passcode').value;
                 
                 const formData = new FormData();
                 formData.append('action', 'save_control_room');
                 formData.append('station_name', newName);
                 formData.append('station_bio', newBio);
+                formData.append('bunker_mode', isBunker);
+                formData.append('station_passcode', newPass);
                 
                 try {
                     await fetch('console.php', { method: 'POST', body: formData });
@@ -609,39 +636,6 @@ try {
                     Terminal.toast('[!] CONFIGURATION UPDATE FAILED', 'danger');
                     btn.innerText = '[ APPLY_CONFIGURATION ]';
                 }
-            });
-        }
-
-        // ==========================================
-        // 🚧 [ BUNKER MODE: THE TOGGLE ENGINE ]
-        // ==========================================
-        const bunkerToggle = document.getElementById('bunker-toggle');
-        if (bunkerToggle) {
-            bunkerToggle.addEventListener('change', async function() {
-                const newState = this.checked ? '1' : '0';
-                const label = document.getElementById('bunker-label');
-                const desc = document.getElementById('bunker-desc');
-                const card = document.getElementById('bunker-card');
-                
-                if(newState === '1') {
-                    label.className = 'font-bold text-danger t-blink';
-                    label.innerText = '[ PRIVATE NODE ]';
-                    desc.innerText = '> Hologram sealed. Alerts active.';
-                    card.style.borderColor = 'var(--t-red)';
-                    card.style.background = 'rgba(255,0,65,0.05)';
-                } else {
-                    label.className = 'font-bold text-success';
-                    label.innerText = '[ PUBLIC NODE ]';
-                    desc.innerText = '> Hologram online. Open to public.';
-                    card.style.borderColor = 'var(--t-green)';
-                    card.style.background = 'rgba(0,255,65,0.05)';
-                }
-
-                const formData = new FormData();
-                formData.append('action', 'toggle_bunker');
-                formData.append('state', newState);
-                await fetch('console.php', { method: 'POST', body: formData });
-                Terminal.toast('[✓] STATION MODE UPDATED', newState === '1' ? 'danger' : 'success');
             });
         }
 

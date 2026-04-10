@@ -1,7 +1,7 @@
 {
-    "version": "5.2",
-    "codename": "Sonar Echo",
+    "version": "5.3",
+    "codename": "Quantum ACK",
     "status": "stable",
-    "changelog": "TACTICAL OPERATOR V5.2:\n- [RADAR] Sonar Pulse: Introduced a tactical Morse Code pinging system for lightweight, low-bandwidth node interactions.\n- [UI] The Morse Synthesizer: Added real-time Web Audio API generation for decoding encrypted Sonar Pulses directly in the browser.\n- [SECURITY] Divergent Routing: Sonar payloads are securely routed to the Alerts table with Double Shield Regex validation and dedicated rate-limiting.",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v5.2/Relay-OTA-Update-v5.2.zip"
+    "changelog": "QUANTUM ACK V5.3:\n- [COMMS] The ACK Protocol: Introduced a decentralized, silent read-receipt system for E2E Direct Messages with real-time [ SENT ] and [ READ ] UI indicators.\n- [UI] Control Room Overhaul: Centralized Bunker Mode toggle and Change Master Passcode functionality into a single dashboard.\n- [SYSTEM] Smart OTA & UI Polish: Updater now autonomously detects local versions. Improved Sonar UI to dynamically decrement and clean up notification alerts after decryption.",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v5.3/Relay-OTA-Update-v5.3.zip"
 }

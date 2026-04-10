@@ -28,6 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 try {
+    // Pastikan kita tidak error jika kolom 'status' belum termigrasi dengan sempurna
     $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'direct' ORDER BY timestamp ASC");
     $transmissions = $query->fetchAll(PDO::FETCH_ASSOC);
 
@@ -92,7 +93,7 @@ try {
 
     <div class="t-container-fluid mt-4">
         <nav class="t-navbar mb-4">
-            <div class="t-nav-brand"><span class="t-led-dot t-led-green t-blink"></span></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">> SECURE_COMMS (E2E) v5.0</span></div>
+            <div class="t-nav-brand"><span class="t-led-dot t-led-green t-blink"></span></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">> SECURE_COMMS (E2E) v5.3</span></div>
             <div class="t-nav-menu">
                 <a href="console.php" class="t-btn t-btn-sm">[ RETURN_TO_TIMELINE ]</a>
             </div>
@@ -137,12 +138,21 @@ try {
                             
                             <?php foreach ($thread as $msg): 
                                 $is_me = ($msg['is_remote'] == 0);
+                                $status = $msg['status'] ?? 'sent';
                             ?>
                                 <div class="mb-3 d-flex flex-column <?php echo $is_me ? 'align-items-end' : 'align-items-start'; ?>">
                                     <div class="fs-small text-muted mb-1">
                                         <?php echo $is_me ? 'LOCAL_COMMAND' : htmlspecialchars($msg['author_alias']); ?> 
                                         [<?php echo date('H:i', strtotime($msg['timestamp'])); ?>] 🔐
                                         <?php if(!empty($msg['expiry_date'])) echo '<span class="text-danger t-flicker"> [👻]</span>'; ?>
+                                        
+                                        <?php if ($is_me): ?>
+                                            <?php if ($status === 'read'): ?>
+                                                <span class="ml-1 font-bold" style="color: #00ffff; text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);">[ READ ]</span>
+                                            <?php else: ?>
+                                                <span class="text-warning ml-1">[ SENT ]</span>
+                                            <?php endif; ?>
+                                        <?php endif; ?>
                                     </div>
                                     <div class="p-2 px-3" style="
                                         max-width: 80%; 
@@ -332,7 +342,9 @@ try {
             }
         });
 
-        // UI Logic
+        // ==========================================
+        // 🎛️ UI LOGIC & ACK TRIGGER
+        // ==========================================
         function openChat(domain, element) {
             document.getElementById('empty-state').style.display = 'none';
             document.getElementById('reply-form').style.display = 'block';
@@ -359,6 +371,17 @@ try {
                     activeThread.classList.add('active');
                     var container = document.getElementById('chat-container');
                     container.scrollTop = container.scrollHeight;
+                    
+                    // 🔫 FIRE ACK PROTOCOL SILENTLY
+                    const formData = new FormData();
+                    formData.append('visibility', 'ack_receipt');
+                    formData.append('target_planet', 'https://' + domain);
+                    formData.append('content', 'ACK'); // Placeholder, won't be saved
+                    
+                    fetch('core/transmitter.php', {
+                        method: 'POST',
+                        body: formData
+                    }).catch(e => console.log('> ACK Dispatch Failed'));
                 }
             }
         }

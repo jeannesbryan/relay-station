@@ -2,7 +2,7 @@
 require_once 'ssl_shield.php';
 // ==========================================================
 // 🚀 RELAY STATION: TRANSMITTER ENGINE (E2E ENABLED)
-// Handles Public, Direct, Ghost Protocol messages, Media, and Sonar Pulse
+// Handles Public, Direct, Ghost Protocol messages, Media, Sonar Pulse, and ACKs
 // ==========================================================
 
 date_default_timezone_set('UTC'); // Enforce UTC to prevent Ghost Protocol timing issues
@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $base_path = '';
     }
 
-    $my_planet_url = $protocol . $host . $base_path;
+    $my_planet_url = rtrim($protocol . $host . $base_path, '/');
     $author_alias = 'LOCAL_COMMAND'; 
     
     // Prevent empty payload transmission
@@ -61,8 +61,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // 🖼️ [ MEDIA PROCESSING ] (With Fallback)
     // ==========================================
     $media_url = null;
-    // Skip media processing for Sonar Pulses
-    if ($visibility !== 'sonar_pulse') {
+    // Skip media processing for Sonar Pulses and ACK Receipts
+    if ($visibility !== 'sonar_pulse' && $visibility !== 'ack_receipt') {
         $upload_dir = '../media/';
         if (!is_dir($upload_dir)) { mkdir($upload_dir, 0755, true); }
 
@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $filepath = $upload_dir . $filename;
             
             if (file_put_contents($filepath, $media_data)) {
-                $media_url = rtrim($my_planet_url, '/') . '/media/' . $filename;
+                $media_url = $my_planet_url . '/media/' . $filename;
             }
         } 
         // Priority 2: Fallback if JS is disabled in browser (Raw Upload)
@@ -90,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $target_file = $upload_dir . $filename;
                 
                 if (move_uploaded_file($_FILES['media']['tmp_name'], $target_file)) {
-                    $media_url = rtrim($my_planet_url, '/') . '/media/' . $filename;
+                    $media_url = $my_planet_url . '/media/' . $filename;
                 }
             }
         }
@@ -102,8 +102,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         // 4. WRITE TO LOCAL CORE MEMORY 
-        // Note: Sonar Pulses are ephemeral and DO NOT get saved to local transmissions
-        if ($visibility !== 'sonar_pulse') {
+        // Note: Sonar Pulses and ACK Receipts are ephemeral and DO NOT get saved to local transmissions
+        if ($visibility !== 'sonar_pulse' && $visibility !== 'ack_receipt') {
             $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, target_planet, is_remote, author_alias, expiry_date, media_url) VALUES (:content, :visibility, :target, 0, :author, :expiry, :media)");
             $stmt->execute([
                 // [ E2E NEW ] Save local ciphertext (locked with own Public Key)
@@ -161,8 +161,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 curl_multi_close($mh);
             }
 
-        } elseif ($visibility === 'direct' || $visibility === 'sonar_pulse') {
-            // [ LASER LINK / SONAR PULSE ] Fire specific message/ping
+        } elseif ($visibility === 'direct' || $visibility === 'sonar_pulse' || $visibility === 'ack_receipt') {
+            // [ LASER LINK / SONAR PULSE / ACK RECEIPT ] Fire specific message/ping
             if (!empty($target_planet)) {
                 $target_url = rtrim($target_planet, '/') . '/api_inbox.php';
                 
@@ -182,7 +182,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         // Mission complete, return to appropriate Radar
-        if ($visibility === 'direct') {
+        if ($visibility === 'ack_receipt') {
+            // Sinyal ini ditembak via AJAX (Latar Belakang), jangan lakukan redirect!
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'success', 'message' => '[ ACK FIRED ]']);
+            exit;
+        } elseif ($visibility === 'direct') {
             header("Location: ../direct.php?status=transmission_successful");
         } else {
             // For both Public and Sonar Pulses
@@ -191,6 +196,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
 
     } catch (PDOException $e) {
+        if ($visibility === 'ack_receipt') {
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'error']);
+            exit;
+        }
         die("<h3 style='color:red;'>[ TRANSMISSION FAILED ] Core Memory Error: " . $e->getMessage() . "</h3>");
     }
 } else {

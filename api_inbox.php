@@ -79,15 +79,20 @@ try {
     if ($visibility === 'sonar_pulse') {
         $stmt_rl = $db->prepare("SELECT COUNT(*) FROM alerts WHERE type = 'sonar_pulse' AND from_planet = :url AND timestamp >= datetime('now', '-1 minute')");
         $stmt_rl->execute([':url' => $normalized_from]);
-    } else {
+        if ($stmt_rl->fetchColumn() >= 5) {
+            http_response_code(429);
+            echo json_encode(['status' => 'error', 'message' => '[ RATE LIMIT ] Max 5 transmissions per minute. Delay your broadcast.']);
+            exit;
+        }
+    } elseif ($visibility !== 'ack_receipt') { 
+        // Note: 'ack_receipt' bypasses rate limiting so bulk message reading doesn't get blocked
         $stmt_rl = $db->prepare("SELECT COUNT(*) FROM transmissions WHERE sender_ip = :ip AND timestamp >= datetime('now', '-1 minute')");
         $stmt_rl->execute([':ip' => $sender_ip]);
-    }
-    
-    if ($stmt_rl->fetchColumn() >= 5) {
-        http_response_code(429);
-        echo json_encode(['status' => 'error', 'message' => '[ RATE LIMIT ] Max 5 transmissions per minute. Delay your broadcast.']);
-        exit;
+        if ($stmt_rl->fetchColumn() >= 5) {
+            http_response_code(429);
+            echo json_encode(['status' => 'error', 'message' => '[ RATE LIMIT ] Max 5 transmissions per minute. Delay your broadcast.']);
+            exit;
+        }
     }
     // ==========================================
 
@@ -107,6 +112,13 @@ try {
             ':url' => $normalized_from,
             ':payload' => $content
         ]);
+        
+    } elseif ($visibility === 'ack_receipt') {
+        // 📩 [ ACK PROTOCOL ] Change local outbox status to READ (Centang Biru)
+        // Jika stasiun B mengirim ACK, kita ubah SEMUA pesan (yg kita kirim ke B) dari 'sent' menjadi 'read'
+        $stmt_ack = $db->prepare("UPDATE transmissions SET status = 'read' WHERE visibility = 'direct' AND is_remote = 0 AND target_planet = :url AND status = 'sent'");
+        $stmt_ack->execute([':url' => $normalized_from]);
+        
     } else {
         // 📩 [ STANDARD TRANSMISSION ] Save to main chat logs
         $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, is_remote, author_alias, expiry_date, media_url, sender_ip) VALUES (:content, :visibility, 1, :author, :expiry, :media_url, :ip)");
