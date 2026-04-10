@@ -33,23 +33,27 @@ $visibility = $signal['visibility'] ?? 'public';
 $expiry_date = $signal['expiry_date'] ?? null; 
 $media_url = !empty($signal['media_url']) ? trim($signal['media_url']) : null;
 
-// 🕵️ [ ANTI-SPOOFING ] Capture physical IP of the sender (Supports Cloudflare/Proxy)
+// ==========================================
+// 🛡️ [ DOUBLE SHIELD PROTOCOL: SONAR VALIDATION ]
+// ==========================================
+if ($visibility === 'sonar_pulse') {
+    // Check for alphanumeric and max 15 characters
+    if (!preg_match('/^[a-zA-Z0-9]{1,15}$/', $content)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => '[ CORRUPTED SONAR ] Invalid tactical code. Alpha-numeric only (Max 15).']);
+        exit;
+    }
+    // Force uppercase for the Morse Synthesizer
+    $content = strtoupper($content);
+}
+
+// 🕵️ [ ANTI-SPOOFING ] Capture physical IP of the sender
 $sender_ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN';
 
 // 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
 require_once 'core/db_connect.php';
 
 try {
-    // ==========================================
-    // 🛠️ [ AUTO-UPGRADE SCHEMA ]
-    // Add sender_ip column without wiping legacy databases
-    // ==========================================
-    try {
-        $db->exec("ALTER TABLE transmissions ADD COLUMN sender_ip TEXT DEFAULT NULL");
-    } catch (PDOException $e) {
-        // Ignore if column already exists
-    }
-
     // ==========================================
     // 🛡️ [ FIREWALL ANTI-SPAM (STAR CHART CHECK) ]
     // ==========================================
@@ -71,9 +75,14 @@ try {
         exit; // Reject landing, do not save to SQLite!
     }
 
-    // 🛑 [ TRUE RATE LIMITING (BY IP) ] Max 5 messages per minute from the same IP
-    $stmt_rl = $db->prepare("SELECT COUNT(*) FROM transmissions WHERE sender_ip = :ip AND timestamp >= datetime('now', '-1 minute')");
-    $stmt_rl->execute([':ip' => $sender_ip]);
+    // 🛑 [ TRUE RATE LIMITING (BY IP / PLANET) ] Max 5 messages per minute
+    if ($visibility === 'sonar_pulse') {
+        $stmt_rl = $db->prepare("SELECT COUNT(*) FROM alerts WHERE type = 'sonar_pulse' AND from_planet = :url AND timestamp >= datetime('now', '-1 minute')");
+        $stmt_rl->execute([':url' => $normalized_from]);
+    } else {
+        $stmt_rl = $db->prepare("SELECT COUNT(*) FROM transmissions WHERE sender_ip = :ip AND timestamp >= datetime('now', '-1 minute')");
+        $stmt_rl->execute([':ip' => $sender_ip]);
+    }
     
     if ($stmt_rl->fetchColumn() >= 5) {
         http_response_code(429);
@@ -88,31 +97,40 @@ try {
     $path = isset($parsed_url['path']) ? rtrim($parsed_url['path'], '/') : '';
     $formatted_author = htmlspecialchars(str_replace(' ', '', $author) . '@' . $domain_host . $path);
 
-    // 3. [ CORE MEMORY INSERTION ]
-    $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, is_remote, author_alias, expiry_date, media_url, sender_ip) VALUES (:content, :visibility, 1, :author, :expiry, :media_url, :ip)");
-    $stmt->execute([
-        ':content' => htmlspecialchars($content),
-        ':visibility' => htmlspecialchars($visibility),
-        ':author' => $formatted_author,
-        ':expiry' => $expiry_date ? htmlspecialchars($expiry_date) : null,
-        ':media_url' => $media_url ? htmlspecialchars($media_url) : null,
-        ':ip' => $sender_ip
-    ]);
+    // ==========================================
+    // 🔀 [ SIGNAL ROUTER (DIVERGENT STORAGE) ]
+    // ==========================================
+    if ($visibility === 'sonar_pulse') {
+        // 📡 [ SONAR PULSE ] Save as lightweight alert, NOT transmission
+        $stmt_sonar = $db->prepare("INSERT INTO alerts (type, from_planet, payload, is_read) VALUES ('sonar_pulse', :url, :payload, 0)");
+        $stmt_sonar->execute([
+            ':url' => $normalized_from,
+            ':payload' => $content
+        ]);
+    } else {
+        // 📩 [ STANDARD TRANSMISSION ] Save to main chat logs
+        $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, is_remote, author_alias, expiry_date, media_url, sender_ip) VALUES (:content, :visibility, 1, :author, :expiry, :media_url, :ip)");
+        $stmt->execute([
+            ':content' => htmlspecialchars($content),
+            ':visibility' => htmlspecialchars($visibility),
+            ':author' => $formatted_author,
+            ':expiry' => $expiry_date ? htmlspecialchars($expiry_date) : null,
+            ':media_url' => $media_url ? htmlspecialchars($media_url) : null,
+            ':ip' => $sender_ip
+        ]);
 
-    // ==========================================
-    // 🔔 [ NOTIFICATION TRIGGER: NEW DIRECT MESSAGE ]
-    // ==========================================
-    if ($visibility === 'direct') {
-        // Check if an unread DM alert from this node already exists (Prevents alert spam)
-        $stmt_alert_check = $db->prepare("SELECT COUNT(*) FROM alerts WHERE type = 'new_dm' AND from_planet = :url AND is_read = 0");
-        $stmt_alert_check->execute([':url' => $normalized_from]);
-        
-        if ($stmt_alert_check->fetchColumn() == 0) {
-            $stmt_alert = $db->prepare("INSERT INTO alerts (type, from_planet, is_read) VALUES ('new_dm', :url, 0)");
-            $stmt_alert->execute([':url' => $normalized_from]);
+        // 🔔 [ NOTIFICATION TRIGGER: NEW DIRECT MESSAGE ]
+        if ($visibility === 'direct') {
+            // Check if an unread DM alert from this node already exists (Prevents alert spam)
+            $stmt_alert_check = $db->prepare("SELECT COUNT(*) FROM alerts WHERE type = 'new_dm' AND from_planet = :url AND is_read = 0");
+            $stmt_alert_check->execute([':url' => $normalized_from]);
+            
+            if ($stmt_alert_check->fetchColumn() == 0) {
+                $stmt_alert = $db->prepare("INSERT INTO alerts (type, from_planet, is_read) VALUES ('new_dm', :url, 0)");
+                $stmt_alert->execute([':url' => $normalized_from]);
+            }
         }
     }
-    // ==========================================
 
     http_response_code(200);
     echo json_encode([

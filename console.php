@@ -378,6 +378,12 @@ try {
                                     <div class="d-flex gap-2">
                                         <a href="core/alert_action.php?id=<?php echo $alert['id']; ?>&redirect=direct" class="t-btn w-100 text-center" style="padding:4px; font-size:11px; text-decoration:none; border-color: var(--t-green); color: var(--t-green);">[ READ MESSAGE ]</a>
                                     </div>
+                                <?php elseif ($alert['type'] == 'sonar_pulse'): ?>
+                                    <div class="fs-small text-danger t-blink mb-2">> 📡 TACTICAL SONAR DETECTED: <br><strong style="word-break: break-all;"><?php echo htmlspecialchars($alert['from_planet']); ?></strong></div>
+                                    <div class="d-flex flex-column gap-2 text-center">
+                                        <div id="sonar-display-<?php echo $alert['id']; ?>" class="text-warning font-bold mb-1" style="letter-spacing: 5px; min-height: 18px; font-size: 14px;"></div>
+                                        <button onclick="decodeSonar('<?php echo htmlspecialchars($alert['payload'] ?? 'PING'); ?>', <?php echo $alert['id']; ?>)" id="btn-sonar-<?php echo $alert['id']; ?>" class="t-btn danger w-100" style="padding:4px; font-size:11px;">[ 📻 DECODE SIGNAL ]</button>
+                                    </div>
                                 <?php endif; ?>
                             </div>
                         <?php endforeach; ?>
@@ -423,7 +429,10 @@ try {
                                     <span class="t-list-item-title"><?php echo htmlspecialchars($clean_alias); ?></span>
                                     <span class="t-list-item-subtitle text-success"><?php echo htmlspecialchars($star['planet_url']); ?></span>
                                 </div>
-                                <a href="core/remove_planet.php?id=<?php echo $star['id']; ?>" class="t-btn danger t-btn-sm ml-2" style="padding: 2px 6px; border-radius: 0; min-width: auto;" title="Disconnect" onclick="return confirm('> WARNING: Disconnect from this node?');">[ ❌ ]</a>
+                                <div class="d-flex gap-2">
+                                    <button onclick="openSonarModal('<?php echo htmlspecialchars($star['planet_url']); ?>', '<?php echo htmlspecialchars($clean_alias); ?>')" class="t-btn warning t-btn-sm" style="padding: 2px 6px; min-width: auto;" title="Send Sonar Pulse">[ 📡 ]</button>
+                                    <a href="core/remove_planet.php?id=<?php echo $star['id']; ?>" class="t-btn danger t-btn-sm" style="padding: 2px 6px; min-width: auto;" title="Disconnect" onclick="return confirm('> WARNING: Disconnect from this node?');">[ ❌ ]</a>
+                                </div>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -455,8 +464,125 @@ try {
         </div>
     </div>
 
+    <div id="sonar-pulse-modal" class="t-splash" style="display:none; z-index: 1000; background: rgba(0,0,0,0.85); flex-direction: column; justify-content: center; align-items: center;">
+        <div class="t-card" style="width: 90%; max-width: 400px; border-color: var(--t-yellow);">
+            <div class="t-card-header d-flex justify-content-between align-items-center text-warning">
+                <span class="font-bold">> 📡 TACTICAL_SONAR_PULSE</span>
+                <button type="button" onclick="document.getElementById('sonar-pulse-modal').style.display='none';" class="t-btn danger t-btn-sm" style="padding: 2px 8px;">[ X ]</button>
+            </div>
+            <div class="p-3 text-center">
+                <div class="text-muted fs-small mb-3">> TARGET: <strong id="sonar-target-display" class="text-success"></strong></div>
+                <form id="sonar-form" action="core/transmitter.php" method="POST" class="m-0">
+                    <input type="hidden" name="visibility" value="sonar_pulse">
+                    <input type="hidden" name="target_planet" id="sonar-target-input">
+                    <div class="mb-3">
+                        <input type="text" id="cr-sonar-code" name="content" class="t-input font-bold text-warning text-center" placeholder="ENTER SHORT CODE" maxlength="15" required style="letter-spacing: 3px; font-size: 1.2rem;">
+                        <div class="text-muted fs-small mt-1">> ALPHANUMERIC ONLY. MAX 15 CHARACTERS.</div>
+                    </div>
+                    <button type="submit" class="t-btn warning w-100 font-bold t-glow" onclick="Terminal.splash.show('> TRANSMITTING SONAR...');">[ FIRE_PULSE ]</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
+        // ==========================================
+        // 📡 [ SONAR PULSE: UI & VALIDATION ENGINE ]
+        // ==========================================
+        function openSonarModal(url, alias) {
+            document.getElementById('sonar-target-display').innerText = alias;
+            document.getElementById('sonar-target-input').value = url;
+            document.getElementById('cr-sonar-code').value = '';
+            document.getElementById('sonar-pulse-modal').style.display = 'flex';
+            document.getElementById('cr-sonar-code').focus();
+        }
+        
+        // Regex Shield Level 1: Force Uppercase & Strip non-alphanumeric chars instantly
+        const sonarInput = document.getElementById('cr-sonar-code');
+        if(sonarInput) {
+            sonarInput.addEventListener('input', function() {
+                this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            });
+        }
+
+        // ==========================================
+        // 📻 [ THE MORSE SYNTHESIZER ENGINE ]
+        // Web Audio API Generator (Zero external libraries)
+        // ==========================================
+        const MORSE_DICT = {
+            'A': '.-', 'B': '-...', 'C': '-.-.', 'D': '-..', 'E': '.', 'F': '..-.',
+            'G': '--.', 'H': '....', 'I': '..', 'J': '.---', 'K': '-.-', 'L': '.-..',
+            'M': '--', 'N': '-.', 'O': '---', 'P': '.--.', 'Q': '--.-', 'R': '.-.',
+            'S': '...', 'T': '-', 'U': '..-', 'V': '...-', 'W': '.--', 'X': '-..-',
+            'Y': '-.--', 'Z': '--..', '0': '-----', '1': '.----', '2': '..---',
+            '3': '...--', '4': '....-', '5': '.....', '6': '-....', '7': '--...',
+            '8': '---..', '9': '----.'
+        };
+
+        async function decodeSonar(code, alertId) {
+            // Final sanitize just in case
+            code = code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            const btn = document.getElementById('btn-sonar-' + alertId);
+            const display = document.getElementById('sonar-display-' + alertId);
+            
+            btn.disabled = true;
+            btn.innerText = '[ 📻 DECODING... ]';
+            display.innerText = '';
+
+            // Initialize Web Audio API
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = 'sine';
+            oscillator.frequency.value = 600; // 600Hz Tactical Beep
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            // Start silent
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            oscillator.start();
+
+            const dotTime = 0.1; // 100ms standard dot length
+
+            // Iterate through every character
+            for (let i = 0; i < code.length; i++) {
+                let char = code[i];
+                display.innerText += char; // Typewriter effect
+                
+                let morse = MORSE_DICT[char];
+                if (morse) {
+                    for (let j = 0; j < morse.length; j++) {
+                        let symbol = morse[j];
+                        let duration = symbol === '.' ? dotTime : dotTime * 3;
+                        
+                        // Volume UP (Beep)
+                        gainNode.gain.setTargetAtTime(1, audioCtx.currentTime, 0.01);
+                        await new Promise(r => setTimeout(r, duration * 1000));
+                        
+                        // Volume DOWN (Silence between symbols)
+                        gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.01);
+                        await new Promise(r => setTimeout(r, dotTime * 1000)); 
+                    }
+                }
+                // Silence between letters
+                await new Promise(r => setTimeout(r, dotTime * 3 * 1000)); 
+            }
+            
+            oscillator.stop();
+            btn.innerText = '[ ✓ DECODED ]';
+            
+            // Remove the alert silently via Background Request
+            fetch('core/alert_action.php?id=' + alertId + '&ajax=1').then(() => {
+                setTimeout(() => {
+                    const card = btn.closest('.t-card');
+                    if(card) card.remove();
+                }, 2000);
+            });
+        }
+
         // ==========================================
         // 🎛️ [ THE CONTROL ROOM ENGINE ]
         // ==========================================

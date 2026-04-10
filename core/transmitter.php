@@ -2,7 +2,7 @@
 require_once 'ssl_shield.php';
 // ==========================================================
 // 🚀 RELAY STATION: TRANSMITTER ENGINE (E2E ENABLED)
-// Handles Public, Direct, Ghost Protocol messages, and Media
+// Handles Public, Direct, Ghost Protocol messages, Media, and Sonar Pulse
 // ==========================================================
 
 date_default_timezone_set('UTC'); // Enforce UTC to prevent Ghost Protocol timing issues
@@ -47,37 +47,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // ==========================================
+    // 🛡️ [ DOUBLE SHIELD PROTOCOL: SONAR VALIDATION ]
+    // ==========================================
+    if ($visibility === 'sonar_pulse') {
+        if (!preg_match('/^[a-zA-Z0-9]{1,15}$/', $content)) {
+            header("Location: ../console.php?error=invalid_sonar");
+            exit;
+        }
+        $content = strtoupper($content); // Force uppercase for Morse Payload
+    }
+
+    // ==========================================
     // 🖼️ [ MEDIA PROCESSING ] (With Fallback)
     // ==========================================
     $media_url = null;
-    $upload_dir = '../media/';
-    if (!is_dir($upload_dir)) { mkdir($upload_dir, 0755, true); }
+    // Skip media processing for Sonar Pulses
+    if ($visibility !== 'sonar_pulse') {
+        $upload_dir = '../media/';
+        if (!is_dir($upload_dir)) { mkdir($upload_dir, 0755, true); }
 
-    // Priority 1: Capture Base64 from JS Compressor (WebP)
-    if (!empty($_POST['media_base64'])) {
-        $media_base64 = $_POST['media_base64'];
-        list($type, $media_base64) = explode(';', $media_base64);
-        list(, $media_base64)      = explode(',', $media_base64);
-        $media_data = base64_decode($media_base64);
-        
-        $filename = uniqid('sig_') . '.webp';
-        $filepath = $upload_dir . $filename;
-        
-        if (file_put_contents($filepath, $media_data)) {
-            $media_url = rtrim($my_planet_url, '/') . '/media/' . $filename;
-        }
-    } 
-    // Priority 2: Fallback if JS is disabled in browser (Raw Upload)
-    elseif (isset($_FILES['media']) && $_FILES['media']['error'] === UPLOAD_ERR_OK) {
-        $file_ext = strtolower(pathinfo($_FILES['media']['name'], PATHINFO_EXTENSION));
-        $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-        
-        if (in_array($file_ext, $allowed_ext)) {
-            $filename = uniqid('sig_') . '.' . $file_ext;
-            $target_file = $upload_dir . $filename;
+        // Priority 1: Capture Base64 from JS Compressor (WebP)
+        if (!empty($_POST['media_base64'])) {
+            $media_base64 = $_POST['media_base64'];
+            list($type, $media_base64) = explode(';', $media_base64);
+            list(, $media_base64)      = explode(',', $media_base64);
+            $media_data = base64_decode($media_base64);
             
-            if (move_uploaded_file($_FILES['media']['tmp_name'], $target_file)) {
+            $filename = uniqid('sig_') . '.webp';
+            $filepath = $upload_dir . $filename;
+            
+            if (file_put_contents($filepath, $media_data)) {
                 $media_url = rtrim($my_planet_url, '/') . '/media/' . $filename;
+            }
+        } 
+        // Priority 2: Fallback if JS is disabled in browser (Raw Upload)
+        elseif (isset($_FILES['media']) && $_FILES['media']['error'] === UPLOAD_ERR_OK) {
+            $file_ext = strtolower(pathinfo($_FILES['media']['name'], PATHINFO_EXTENSION));
+            $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+            
+            if (in_array($file_ext, $allowed_ext)) {
+                $filename = uniqid('sig_') . '.' . $file_ext;
+                $target_file = $upload_dir . $filename;
+                
+                if (move_uploaded_file($_FILES['media']['tmp_name'], $target_file)) {
+                    $media_url = rtrim($my_planet_url, '/') . '/media/' . $filename;
+                }
             }
         }
     }
@@ -87,17 +101,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_once 'db_connect.php';
 
     try {
-        // 4. WRITE TO LOCAL CORE MEMORY
-        $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, target_planet, is_remote, author_alias, expiry_date, media_url) VALUES (:content, :visibility, :target, 0, :author, :expiry, :media)");
-        $stmt->execute([
-            // [ E2E NEW ] Save local ciphertext (locked with own Public Key)
-            ':content' => $content_local, 
-            ':visibility' => $visibility,
-            ':target' => $target_planet,
-            ':author' => $author_alias,
-            ':expiry' => $expiry_date,
-            ':media' => $media_url
-        ]);
+        // 4. WRITE TO LOCAL CORE MEMORY 
+        // Note: Sonar Pulses are ephemeral and DO NOT get saved to local transmissions
+        if ($visibility !== 'sonar_pulse') {
+            $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, target_planet, is_remote, author_alias, expiry_date, media_url) VALUES (:content, :visibility, :target, 0, :author, :expiry, :media)");
+            $stmt->execute([
+                // [ E2E NEW ] Save local ciphertext (locked with own Public Key)
+                ':content' => $content_local, 
+                ':visibility' => $visibility,
+                ':target' => $target_planet,
+                ':author' => $author_alias,
+                ':expiry' => $expiry_date,
+                ':media' => $media_url
+            ]);
+        }
         
         // 5. ASSEMBLE JSON CAPSULE
         $payload = json_encode([
@@ -114,7 +131,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($visibility === 'public') {
             // [ SCATTER BEAM ] Broadcast to all allies in the Star Chart
-            // [ BUG FIX ] Using the correct "following" table
             $query = $db->query("SELECT planet_url FROM following");
             $allies = $query->fetchAll(PDO::FETCH_ASSOC);
             
@@ -145,8 +161,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 curl_multi_close($mh);
             }
 
-        } elseif ($visibility === 'direct') {
-            // [ LASER LINK ] Fire specific Direct Message
+        } elseif ($visibility === 'direct' || $visibility === 'sonar_pulse') {
+            // [ LASER LINK / SONAR PULSE ] Fire specific message/ping
             if (!empty($target_planet)) {
                 $target_url = rtrim($target_planet, '/') . '/api_inbox.php';
                 
@@ -169,6 +185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($visibility === 'direct') {
             header("Location: ../direct.php?status=transmission_successful");
         } else {
+            // For both Public and Sonar Pulses
             header("Location: ../console.php?status=transmission_successful");
         }
         exit;

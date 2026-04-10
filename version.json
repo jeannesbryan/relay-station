@@ -1,7 +1,7 @@
 {
-    "version": "5.1",
-    "codename": "Tactical Operator",
+    "version": "5.2",
+    "codename": "Sonar Echo",
     "status": "stable",
-    "changelog": "TACTICAL OPERATOR V5.1:\n- [UI] The Control Room: Centralized dashboard overlay to easily configure Station Name and Bio.\n- [RADAR] Sovereign Profile: Public Hologram now strictly displays only local transmissions, acting as a personal broadcast profile.\n- [COMMS] Purge Protocol: Added 'Purge Link' functionality to permanently delete local E2E Direct Message histories.",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v5.1/Relay-OTA-Update-v5.1.zip"
+    "changelog": "TACTICAL OPERATOR V5.2:\n- [RADAR] Sonar Pulse: Introduced a tactical Morse Code pinging system for lightweight, low-bandwidth node interactions.\n- [UI] The Morse Synthesizer: Added real-time Web Audio API generation for decoding encrypted Sonar Pulses directly in the browser.\n- [SECURITY] Divergent Routing: Sonar payloads are securely routed to the Alerts table with Double Shield Regex validation and dedicated rate-limiting.",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v5.2/Relay-OTA-Update-v5.2.zip"
 }
