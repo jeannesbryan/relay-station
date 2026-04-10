@@ -12,7 +12,7 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
 
 // 1. Konfigurasi Pusat Komando
 $remote_beacon_url = 'https://raw.githubusercontent.com/jeannesbryan/relay-station/main/version.json?t=' . time();
-$current_version = '4.3'; // Versi stasiun saat ini
+$current_version = '5.0'; // Versi stasiun saat ini
 
 // 2. Cek Pembaruan (Ping Remote)
 $ch = curl_init($remote_beacon_url);

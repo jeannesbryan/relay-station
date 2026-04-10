@@ -1,5 +1,7 @@
 {
-    "version": "4.3",
-    "changelog": "THE IRON BUNKER V4.3 (STEALTH EDITION):\n- [PRIVACY] Bunker Mode (Private Node): Toggle your station into stealth mode at any time. Your public hologram timeline is now sealed from outsiders.\n- [NETWORK] Bouncer Protocol: Incoming follower requests are held in your console for manual approval (Accept/Reject/Ignore).",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v4.3/Relay-OTA-Update-v4.3.zip"
+    "version": "5.0",
+    "codename": "Tactical Operator",
+    "status": "stable",
+    "changelog": "TACTICAL OPERATOR V5.0:\n- [CORE] SQLite WAL Mode: Centralized database connection (db_connect.php) for high concurrency and zero database-locking.\n- [BUG FIX] Resolved Bunker Mode toggle duplication in system configuration.\n- [BUG FIX] Fixed Public Hologram radar to correctly display local commander transmissions.\n- [REFACTOR] Codebase standardization and English translation of core operations.",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v5.0/Relay-OTA-Update-v5.0.zip"
 }

@@ -50,7 +50,7 @@ Relay Station is built on a pure **Peer-to-Peer (P2P) Distributed Architecture**
 ### The Advantages (Pros)
 1.  **Extreme Resilience (Anti-Fragile):** There is no central tracking server. If 90% of the nodes in the universe are destroyed, the remaining 10% will continue to function and communicate flawlessly.
 2.  **Zero-Configuration Deployment:** The "Drop-Pod" installer builds the database, sets up security protocols, and self-destructs the installation files automatically. 
-3.  **Lightweight & Cost-Effective:** Uses SQLite for core memory and requires minimal RAM. It cleans up its own orphan files and old public signals automatically via an advanced Garbage Collector.
+3.  **Lightweight & High Concurrency:** Uses SQLite for core memory. Powered by **Write-Ahead Logging (WAL) Mode**, the database allows simultaneous read and write operations without locking, gracefully handling high-traffic P2P signal bombardments with minimal RAM. It also cleans up its own orphan files automatically via an advanced Garbage Collector.
 4.  **Censorship Resistant:** No algorithm, no shadow-banning, and no central moderation. You only receive data from the nodes you explicitly trust and follow.
 
 ### The Limitations (Cons)

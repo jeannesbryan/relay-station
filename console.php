@@ -4,7 +4,6 @@ require_once 'core/ssl_shield.php';
 // 🔒 [ SECURITY OVERRIDE: ENCRYPTED SESSION ]
 // ==========================================
 session_start();
-$db_file = 'data/relay_core.sqlite';
 date_default_timezone_set('UTC'); 
 
 // ==========================================
@@ -18,19 +17,18 @@ if (file_exists('version.json')) {
     }
 }
 
-try {
-    $db_auth = new PDO("sqlite:" . $db_file);
-    $db_auth->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $db_auth->setAttribute(PDO::ATTR_TIMEOUT, 5); 
-    
-    // ==========================================
-    // 🛡️ ANTI-BRUTE FORCE LOCKOUT PROTOCOL
-    // ==========================================
-    $user_ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN';
-    $is_locked = false;
-    $login_error = null;
+// 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
+require_once 'core/db_connect.php';
 
-    $stmt_check_ip = $db_auth->prepare("SELECT attempts, lockout_until FROM login_attempts WHERE ip_address = :ip");
+// ==========================================
+// 🛡️ ANTI-BRUTE FORCE LOCKOUT PROTOCOL
+// ==========================================
+$user_ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN';
+$is_locked = false;
+$login_error = null;
+
+try {
+    $stmt_check_ip = $db->prepare("SELECT attempts, lockout_until FROM login_attempts WHERE ip_address = :ip");
     $stmt_check_ip->execute([':ip' => $user_ip]);
     $ip_status = $stmt_check_ip->fetch(PDO::FETCH_ASSOC);
 
@@ -41,23 +39,27 @@ try {
             $time_left = ceil(($lockout_end - time()) / 60);
             $login_error = "SYSTEM LOCKED. WAIT {$time_left} MINUTE(S).";
         } else {
-            $db_auth->prepare("DELETE FROM login_attempts WHERE ip_address = :ip")->execute([':ip' => $user_ip]);
+            $db->prepare("DELETE FROM login_attempts WHERE ip_address = :ip")->execute([':ip' => $user_ip]);
             $ip_status = false; 
         }
     }
 
-    $stmt = $db_auth->query("SELECT config_value FROM system_config WHERE config_key = 'captain_hash'");
+    // [ BUG FIX ]: Always fetch the latest row
+    $stmt = $db->query("SELECT config_value FROM system_config WHERE config_key = 'captain_hash' ORDER BY rowid DESC LIMIT 1");
     $captain_hash = $stmt->fetchColumn();
     $stmt = null; 
 
 } catch (PDOException $e) {
-    die("[ CRITICAL ERROR ] Cannot read station encryption: " . $e->getMessage());
+    die("[ CRITICAL ERROR ] Security Protocol Failed: " . $e->getMessage());
 }
 
+// ==========================================
+// 🔑 [ AUTHENTICATION PROCESS ]
+// ==========================================
 if (isset($_POST['passcode']) && !$is_locked) {
     if (password_verify($_POST['passcode'], $captain_hash)) {
         if ($ip_status) {
-            $db_auth->prepare("DELETE FROM login_attempts WHERE ip_address = :ip")->execute([':ip' => $user_ip]);
+            $db->prepare("DELETE FROM login_attempts WHERE ip_address = :ip")->execute([':ip' => $user_ip]);
         }
         $_SESSION['relay_auth'] = true;
         header("Location: console.php"); exit;
@@ -66,17 +68,17 @@ if (isset($_POST['passcode']) && !$is_locked) {
             $attempts = $ip_status['attempts'] + 1;
             if ($attempts >= 5) {
                 $lock_time = date('Y-m-d H:i:s', strtotime('+15 minutes'));
-                $stmt = $db_auth->prepare("UPDATE login_attempts SET attempts = :attempts, lockout_until = :lock_time WHERE ip_address = :ip");
+                $stmt = $db->prepare("UPDATE login_attempts SET attempts = :attempts, lockout_until = :lock_time WHERE ip_address = :ip");
                 $stmt->execute([':attempts' => $attempts, ':lock_time' => $lock_time, ':ip' => $user_ip]);
                 $is_locked = true;
                 $login_error = "SYSTEM LOCKED. WAIT 15 MINUTE(S).";
             } else {
-                $stmt = $db_auth->prepare("UPDATE login_attempts SET attempts = :attempts WHERE ip_address = :ip");
+                $stmt = $db->prepare("UPDATE login_attempts SET attempts = :attempts WHERE ip_address = :ip");
                 $stmt->execute([':attempts' => $attempts, ':ip' => $user_ip]);
                 $login_error = "ACCESS DENIED. " . (5 - $attempts) . " ATTEMPTS LEFT.";
             }
         } else {
-            $stmt = $db_auth->prepare("INSERT INTO login_attempts (ip_address, attempts) VALUES (:ip, 1)");
+            $stmt = $db->prepare("INSERT INTO login_attempts (ip_address, attempts) VALUES (:ip, 1)");
             $stmt->execute([':ip' => $user_ip]);
             $login_error = "ACCESS DENIED. 4 ATTEMPTS LEFT.";
         }
@@ -88,6 +90,9 @@ if (isset($_GET['logout'])) {
     header("Location: index.php"); exit;
 }
 
+// ==========================================
+// 🛡️ [ RENDER LOGIN SHIELD IF UNAUTHENTICATED ]
+// ==========================================
 if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     echo '<!DOCTYPE html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1.0">';
     echo '<title>RESTRICTED - Relay</title>';
@@ -122,36 +127,33 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     echo '</body></html>'; exit;
 }
 
+// ==========================================
+// 🚀 [ MAIN DASHBOARD PROCESSOR ]
+// ==========================================
 try {
-    $db = new PDO("sqlite:" . $db_file);
-    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $db->setAttribute(PDO::ATTR_TIMEOUT, 5);
-    
-    // ==========================================
     // 🔐 [ AJAX ENDPOINT: SAVE PUBLIC KEY ]
-    // ==========================================
     if (isset($_POST['action']) && $_POST['action'] === 'save_pubkey') {
         $pubkey = trim($_POST['public_key'] ?? '');
         if (!empty($pubkey)) {
-            $stmt = $db->prepare("INSERT OR REPLACE INTO system_config (config_key, config_value) VALUES ('public_key', :val)");
+            // [ BUG FIX ]: Purge old keys to prevent duplicates, then insert new
+            $db->prepare("DELETE FROM system_config WHERE config_key = 'public_key'")->execute();
+            $stmt = $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('public_key', :val)");
             $stmt->execute([':val' => $pubkey]);
         }
         exit;
     }
 
-    // ==========================================
     // 🚧 [ AJAX ENDPOINT: TOGGLE BUNKER MODE ]
-    // ==========================================
     if (isset($_POST['action']) && $_POST['action'] === 'toggle_bunker') {
         $new_state = ($_POST['state'] === '1') ? '1' : '0';
-        $stmt = $db->prepare("INSERT OR REPLACE INTO system_config (config_key, config_value) VALUES ('bunker_mode', :val)");
+        // [ BUG FIX ]: Purge old state to prevent duplicates, then insert new
+        $db->prepare("DELETE FROM system_config WHERE config_key = 'bunker_mode'")->execute();
+        $stmt = $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('bunker_mode', :val)");
         $stmt->execute([':val' => $new_state]);
         exit;
     }
     
-    // ==========================================
     // 🧹 [ ADVANCED GARBAGE COLLECTOR V3.0.2 ]
-    // ==========================================
     $stmt_ghost = $db->query("SELECT media_url FROM transmissions WHERE expiry_date IS NOT NULL AND expiry_date <= CURRENT_TIMESTAMP AND media_url IS NOT NULL");
     $expired_ghosts = $stmt_ghost->fetchAll(PDO::FETCH_COLUMN);
     foreach ($expired_ghosts as $ghost_img) {
@@ -175,9 +177,7 @@ try {
     }
     $db->exec("DELETE FROM transmissions WHERE visibility = 'public' AND is_remote = 1 AND timestamp <= datetime('now', '-30 days')");
 
-    // ==========================================
     // 🔄 [ AJAX ENDPOINT: CURSOR-BASED PAGINATION ]
-    // ==========================================
     if (isset($_GET['last_id'])) {
         $last_id = (int)$_GET['last_id'];
         $stmt = $db->prepare("SELECT * FROM transmissions WHERE visibility = 'public' AND id < :last_id ORDER BY id DESC LIMIT 15");
@@ -210,12 +210,12 @@ try {
     $stmt_alerts = $db->query("SELECT * FROM alerts WHERE is_read = 0 ORDER BY id DESC");
     $active_alerts = $stmt_alerts->fetchAll(PDO::FETCH_ASSOC);
 
-    // [ NEW ] Mengambil Status Bunker Mode
-    $stmt_bunker = $db->query("SELECT config_value FROM system_config WHERE config_key = 'bunker_mode'");
+    // [ BUG FIX ]: Fetch Bunker Mode Status (Latest)
+    $stmt_bunker = $db->query("SELECT config_value FROM system_config WHERE config_key = 'bunker_mode' ORDER BY rowid DESC LIMIT 1");
     $bunker_mode = $stmt_bunker->fetchColumn() ?: '0';
 
 } catch (PDOException $e) {
-    die("<h3 class='t-alert danger'>[ CRITICAL ERROR ] Core Memory Offline.</h3>");
+    die("<h3 class='t-alert danger'>[ CRITICAL ERROR ] Core Memory Data Fetch Failed.</h3>");
 }
 ?>
 
@@ -501,7 +501,6 @@ try {
             }
         }
         window.addEventListener('DOMContentLoaded', initCryptoRadar);
-
 
         document.getElementById('broadcast-form').addEventListener('submit', () => { Terminal.splash.show('> TRANSMITTING_SIGNAL...'); });
         document.getElementById('follow-form').addEventListener('submit', () => { Terminal.splash.show('> LOCKING_COORDINATES...'); });

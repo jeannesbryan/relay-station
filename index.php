@@ -19,35 +19,36 @@ if (file_exists('version.json')) {
     }
 }
 
-$db_file = 'data/relay_core.sqlite';
+// 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
+require_once 'core/db_connect.php';
 
 try {
-    $db = new PDO("sqlite:" . $db_file);
-    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
     // ==========================================
     // 🚧 [ CHECK STATION MODE: BUNKER STATUS ]
+    // [ BUG FIX ]: Selalu ambil baris data terbaru (terbawah) dari tabel
     // ==========================================
-    $stmt_bunker = $db->query("SELECT config_value FROM system_config WHERE config_key = 'bunker_mode'");
+    $stmt_bunker = $db->query("SELECT config_value FROM system_config WHERE config_key = 'bunker_mode' ORDER BY rowid DESC LIMIT 1");
     $bunker_mode = $stmt_bunker->fetchColumn() ?: '0';
 
     // 🔄 [ AJAX ENDPOINT: CURSOR-BASED PAGINATION ]
     if (isset($_GET['last_id'])) {
-        // Blokir akses data AJAX jika dalam mode Bunker
+        // Block AJAX data access if Bunker mode is active
         if ($bunker_mode == '1') { exit; }
 
         $last_id = (int)$_GET['last_id'];
-        $stmt = $db->prepare("SELECT * FROM transmissions WHERE visibility = 'public' AND is_remote = 1 AND id < :last_id ORDER BY id DESC LIMIT 15");
+        // [ BUG FIX ]: Hapus filter is_remote = 1 agar pesan lokal juga terambil
+        $stmt = $db->prepare("SELECT * FROM transmissions WHERE visibility = 'public' AND id < :last_id ORDER BY id DESC LIMIT 15");
         $stmt->execute([':last_id' => $last_id]);
         $transmissions = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($transmissions as $msg) {
             $author = htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN');
             $img = !empty($msg['media_url']) ? '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" class="t-hologram-img" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>' : '';
+            $src_label = $msg['is_remote'] ? 'INCOMING FROM:' : 'LOCAL_AUTHOR:';
             
             echo "<div class='t-card mb-3 p-3 transmission-card' data-id='{$msg['id']}'>
                     <div class='t-bubble-meta t-border-bottom pb-2 mb-2'>
-                        <span>[ {$msg['timestamp']} UTC ] INCOMING FROM: <strong class='text-success'>$author</strong></span>
+                        <span>[ {$msg['timestamp']} UTC ] $src_label <strong class='text-success'>$author</strong></span>
                     </div>
                     <p class='m-0' style='font-size: 14px;'>".nl2br(htmlspecialchars($msg['content']))."</p> $img
                   </div>";
@@ -55,10 +56,11 @@ try {
         exit;
     }
 
-    // Jika Mode Bunker aktif, jangan tarik data pesan ke memori
+    // If Bunker Mode is active, do not fetch message data into memory
     $transmissions = [];
     if ($bunker_mode == '0') {
-        $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'public' AND is_remote = 1 ORDER BY id DESC LIMIT 15");
+        // [ BUG FIX ]: Hapus filter is_remote = 1
+        $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'public' ORDER BY id DESC LIMIT 15");
         $transmissions = $query->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -110,7 +112,11 @@ try {
                             <?php foreach ($transmissions as $msg): ?>
                                 <div class="t-card mb-3 p-3 transmission-card" data-id="<?php echo $msg['id']; ?>">
                                     <div class="t-bubble-meta t-border-bottom pb-2 mb-2">
-                                        <span>[ <?php echo $msg['timestamp']; ?> UTC ] INCOMING FROM: <strong class="text-success"><?php echo htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN'); ?></strong></span>
+                                        <span>
+                                            [ <?php echo $msg['timestamp']; ?> UTC ] 
+                                            <?php echo $msg['is_remote'] ? 'INCOMING FROM:' : 'LOCAL_AUTHOR:'; ?> 
+                                            <strong class="text-success"><?php echo htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN'); ?></strong>
+                                        </span>
                                     </div>
                                     <p class="m-0" style="font-size: 14px;">
                                         <?php echo nl2br(htmlspecialchars($msg['content'])); ?>

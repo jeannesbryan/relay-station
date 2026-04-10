@@ -1,38 +1,37 @@
 <?php
 require_once 'ssl_shield.php';
 // RELAY STATION: DEEP SPACE RADAR SWEEP
-// Mengeping semua node di Star Chart. Jika node mati/error, akan dihapus.
+// Pings all nodes in the Star Chart. Dead/Error nodes will be purged.
 
 session_start();
 if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     die("UNAUTHORIZED");
 }
 
-$db_file = '../data/relay_core.sqlite';
+// 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
+require_once 'db_connect.php';
+
 try {
-    $db = new PDO("sqlite:" . $db_file);
-    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    
     $stmt = $db->query("SELECT id, planet_url, alias FROM following");
     $nodes = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     if (count($nodes) === 0) {
-        die("[ RADAR EMPTY ] Tidak ada koordinat untuk dipindai.");
+        die("[ RADAR EMPTY ] No coordinates to scan.");
     }
 
-    // Senjata Mesin (Multi-cURL) untuk Ping serentak
+    // Machine Gun (Multi-cURL) for simultaneous pinging
     $mh = curl_multi_init();
     $curl_array = [];
     foreach ($nodes as $i => $node) {
         $ping_url = rtrim($node['planet_url'], '/') . '/api_ping.php';
         $curl_array[$i] = curl_init($ping_url);
         curl_setopt($curl_array[$i], CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($curl_array[$i], CURLOPT_TIMEOUT, 5); // 5 detik max
+        curl_setopt($curl_array[$i], CURLOPT_TIMEOUT, 5); // 5 seconds max
         curl_setopt($curl_array[$i], CURLOPT_SSL_VERIFYPEER, false);
         curl_multi_add_handle($mh, $curl_array[$i]);
     }
 
-    // Tembakkan radar
+    // Fire the radar
     $running = null;
     do { curl_multi_exec($mh, $running); } while ($running);
 
@@ -55,7 +54,7 @@ try {
         if ($is_alive) {
             $active_nodes++;
         } else {
-            // Node mati, hapus dari database radar
+            // Node is dead, purge from radar database
             $del_stmt = $db->prepare("DELETE FROM following WHERE id = :id");
             $del_stmt->execute([':id' => $node['id']]);
             $dead_nodes++;

@@ -1,25 +1,28 @@
 <?php
 require_once 'core/ssl_shield.php';
-// RELAY STATION: ATMOSPHERIC SHIELD & INBOX (V3.0.6 - WITH DM ALERTS)
-// Endpoint untuk menerima sinyal (POST) dari planet lain, dilengkapi Firewall Anti-Spam dan Anti-Spoofing.
+// ==========================================
+// 📡 RELAY STATION: ATMOSPHERIC SHIELD & INBOX
+// Endpoint to receive incoming signals (POST) from foreign nodes. 
+// Equipped with Anti-Spam and Anti-Spoofing Firewalls.
+// ==========================================
 
 header('Content-Type: application/json');
-date_default_timezone_set('UTC'); // Waktu kosmik standar
+date_default_timezone_set('UTC'); // Standard cosmic time
 
-// 1. [ SHIELD ] Hanya menerima tembakan POST
+// 1. [ SHIELD ] Only accept POST transmissions
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
-    echo json_encode(['status' => 'error', 'message' => '[ SHIELD REFLECTED ] Sinyal ditolak. Gunakan protokol POST.']);
+    echo json_encode(['status' => 'error', 'message' => '[ SHIELD REFLECTED ] Signal rejected. Use POST protocol.']);
     exit;
 }
 
-// 2. [ DECRYPTION ] Menangkap dan membuka kapsul JSON
+// 2. [ DECRYPTION ] Intercept and open JSON capsule
 $raw_payload = file_get_contents('php://input');
 $signal = json_decode($raw_payload, true);
 
 if (!$signal || empty($signal['content']) || empty($signal['author_alias']) || empty($signal['from_planet'])) {
     http_response_code(400);
-    echo json_encode(['status' => 'error', 'message' => '[ CORRUPTED SIGNAL ] Kapsul data tidak lengkap.']);
+    echo json_encode(['status' => 'error', 'message' => '[ CORRUPTED SIGNAL ] Incomplete data capsule.']);
     exit;
 }
 
@@ -30,23 +33,21 @@ $visibility = $signal['visibility'] ?? 'public';
 $expiry_date = $signal['expiry_date'] ?? null; 
 $media_url = !empty($signal['media_url']) ? trim($signal['media_url']) : null;
 
-// 🕵️ [ ANTI-SPOOFING ] Tangkap IP Fisik Pengirim (Mendukung Cloudflare/Proxy)
+// 🕵️ [ ANTI-SPOOFING ] Capture physical IP of the sender (Supports Cloudflare/Proxy)
 $sender_ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN';
 
-$db_file = 'data/relay_core.sqlite';
+// 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
+require_once 'core/db_connect.php';
 
 try {
-    $db = new PDO("sqlite:" . $db_file);
-    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
     // ==========================================
     // 🛠️ [ AUTO-UPGRADE SCHEMA ]
-    // Menambahkan kolom sender_ip tanpa perlu hapus database lama
+    // Add sender_ip column without wiping legacy databases
     // ==========================================
     try {
         $db->exec("ALTER TABLE transmissions ADD COLUMN sender_ip TEXT DEFAULT NULL");
     } catch (PDOException $e) {
-        // Abaikan jika kolom sudah ada
+        // Ignore if column already exists
     }
 
     // ==========================================
@@ -65,23 +66,23 @@ try {
         http_response_code(403); 
         echo json_encode([
             'status' => 'error', 
-            'message' => '[ FIREWALL REFLECTED ] Akses ditolak. Planet Anda tidak terdaftar di Peta Bintang kami.'
+            'message' => '[ FIREWALL REFLECTED ] Access denied. Your node is not registered in our Star Chart.'
         ]);
-        exit; // Tolak pendaratan, jangan simpan ke SQLite!
+        exit; // Reject landing, do not save to SQLite!
     }
 
-    // 🛑 [ TRUE RATE LIMITING (BY IP) ] Maksimal 5 pesan per menit dari IP yang sama
+    // 🛑 [ TRUE RATE LIMITING (BY IP) ] Max 5 messages per minute from the same IP
     $stmt_rl = $db->prepare("SELECT COUNT(*) FROM transmissions WHERE sender_ip = :ip AND timestamp >= datetime('now', '-1 minute')");
     $stmt_rl->execute([':ip' => $sender_ip]);
     
     if ($stmt_rl->fetchColumn() >= 5) {
         http_response_code(429);
-        echo json_encode(['status' => 'error', 'message' => '[ RATE LIMIT ] Maksimal 5 transmisi per menit. Tunda siaran Anda.']);
+        echo json_encode(['status' => 'error', 'message' => '[ RATE LIMIT ] Max 5 transmissions per minute. Delay your broadcast.']);
         exit;
     }
     // ==========================================
 
-    // Format Alias Otomatis: namapengirim@domainplanet.com/folder
+    // Auto-Format Alias: sendername@domain.com/folder
     $parsed_url = parse_url($normalized_from);
     $domain_host = $parsed_url['host'] ?? 'UNKNOWN';
     $path = isset($parsed_url['path']) ? rtrim($parsed_url['path'], '/') : '';
@@ -102,7 +103,7 @@ try {
     // 🔔 [ NOTIFICATION TRIGGER: NEW DIRECT MESSAGE ]
     // ==========================================
     if ($visibility === 'direct') {
-        // Cek apakah notif DM dari node ini sudah ada yang belum dibaca (Mencegah spam lonceng)
+        // Check if an unread DM alert from this node already exists (Prevents alert spam)
         $stmt_alert_check = $db->prepare("SELECT COUNT(*) FROM alerts WHERE type = 'new_dm' AND from_planet = :url AND is_read = 0");
         $stmt_alert_check->execute([':url' => $normalized_from]);
         
@@ -116,11 +117,11 @@ try {
     http_response_code(200);
     echo json_encode([
         'status' => 'success', 
-        'message' => '[ DOCKED ] Sinyal berhasil mendarat di RELAY STATION.',
+        'message' => '[ DOCKED ] Signal successfully landed at RELAY STATION.',
         'receipt_time' => date('Y-m-d H:i:s')
     ]);
 
 } catch (PDOException $e) {
     http_response_code(500);
-    echo json_encode(['status' => 'error', 'message' => '[ INTERNAL FAILURE ] Reaktor Core Memory bermasalah.']);
+    echo json_encode(['status' => 'error', 'message' => '[ INTERNAL FAILURE ] Core Memory reactor malfunction.']);
 }

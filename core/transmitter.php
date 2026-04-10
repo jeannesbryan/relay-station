@@ -8,12 +8,11 @@ require_once 'ssl_shield.php';
 date_default_timezone_set('UTC'); // Enforce UTC to prevent Ghost Protocol timing issues
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $db_file = '../data/relay_core.sqlite';
     
     // 1. Capture Console Input
     $content = trim($_POST['content'] ?? '');
     
-    // [ E2E NEW ] Tangkap ciphertext khusus untuk database lokal
+    // [ E2E NEW ] Capture specific ciphertext for local database
     $content_local = trim($_POST['content_local'] ?? $content); 
     
     $visibility = $_POST['visibility'] ?? 'public';
@@ -54,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $upload_dir = '../media/';
     if (!is_dir($upload_dir)) { mkdir($upload_dir, 0755, true); }
 
-    // Prioritas 1: Tangkap Base64 dari JS Compressor (WebP)
+    // Priority 1: Capture Base64 from JS Compressor (WebP)
     if (!empty($_POST['media_base64'])) {
         $media_base64 = $_POST['media_base64'];
         list($type, $media_base64) = explode(';', $media_base64);
@@ -68,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $media_url = rtrim($my_planet_url, '/') . '/media/' . $filename;
         }
     } 
-    // Prioritas 2: Fallback jika JS dimatikan di browser (Upload Murni)
+    // Priority 2: Fallback if JS is disabled in browser (Raw Upload)
     elseif (isset($_FILES['media']) && $_FILES['media']['error'] === UPLOAD_ERR_OK) {
         $file_ext = strtolower(pathinfo($_FILES['media']['name'], PATHINFO_EXTENSION));
         $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
@@ -84,14 +83,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     // ==========================================
 
+    // 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
+    require_once 'db_connect.php';
+
     try {
-        $db = new PDO("sqlite:" . $db_file);
-        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        
         // 4. WRITE TO LOCAL CORE MEMORY
         $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, target_planet, is_remote, author_alias, expiry_date, media_url) VALUES (:content, :visibility, :target, 0, :author, :expiry, :media)");
         $stmt->execute([
-            // [ E2E NEW ] Simpan ciphertext lokal (dikunci pakai Public Key sendiri)
+            // [ E2E NEW ] Save local ciphertext (locked with own Public Key)
             ':content' => $content_local, 
             ':visibility' => $visibility,
             ':target' => $target_planet,
@@ -102,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         // 5. ASSEMBLE JSON CAPSULE
         $payload = json_encode([
-            // [ E2E NEW ] Dikirim ke luar (dikunci pakai Public Key target)
+            // [ E2E NEW ] Send outward (locked with target's Public Key)
             "content" => $content, 
             "author_alias" => $author_alias,
             "from_planet" => $my_planet_url,
@@ -115,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($visibility === 'public') {
             // [ SCATTER BEAM ] Broadcast to all allies in the Star Chart
-            // [ BUG FIX ] Menggunakan tabel "following" yang benar
+            // [ BUG FIX ] Using the correct "following" table
             $query = $db->query("SELECT planet_url FROM following");
             $allies = $query->fetchAll(PDO::FETCH_ASSOC);
             

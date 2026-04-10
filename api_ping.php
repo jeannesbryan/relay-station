@@ -3,39 +3,38 @@ require_once 'core/ssl_shield.php';
 // ==========================================
 // 📡 RELAY STATION: IDENTIFICATION BEACON
 // ==========================================
-// Merespon sinyal "Ping" dari stasiun asing untuk membuktikan validitas node dan kapabilitasnya.
+// Responds to "Ping" signals from foreign stations to prove node validity and capabilities.
 
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *'); // Mengizinkan stasiun lain untuk membaca ping ini
+header('Access-Control-Allow-Origin: *'); // Allow other stations to read this ping
 
-$db_file = 'data/relay_core.sqlite';
 $public_key = null;
 $bunker_mode = '0';
 
-// Mengambil Gembok (Public Key) & Status Bunker dari Core Memory
+// Fetch Public Key & Bunker Mode Status from Core Memory
 try {
-    if (file_exists($db_file)) {
-        $db = new PDO("sqlite:" . $db_file);
-        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $db->setAttribute(PDO::ATTR_TIMEOUT, 5);
+    if (file_exists('data/relay_core.sqlite')) {
+        // 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
+        require_once 'core/db_connect.php';
         
-        // Menarik Public Key
-        $stmt = $db->query("SELECT config_value FROM system_config WHERE config_key = 'public_key'");
+        // [ BUG FIX ]: Always fetch the latest row for config keys
+        // Fetch Public Key
+        $stmt = $db->query("SELECT config_value FROM system_config WHERE config_key = 'public_key' ORDER BY rowid DESC LIMIT 1");
         if ($stmt) {
             $public_key = $stmt->fetchColumn();
         }
 
-        // [ NEW ] Menarik status Bunker Mode
-        $stmt_bunker = $db->query("SELECT config_value FROM system_config WHERE config_key = 'bunker_mode'");
+        // Fetch Bunker Mode status
+        $stmt_bunker = $db->query("SELECT config_value FROM system_config WHERE config_key = 'bunker_mode' ORDER BY rowid DESC LIMIT 1");
         if ($stmt_bunker) {
             $bunker_mode = $stmt_bunker->fetchColumn() ?: '0';
         }
     }
 } catch (Exception $e) {
-    // Abaikan jika mesin memori belum siap (misal saat instalasi awal)
+    // Ignore if core memory is not ready (e.g., during fresh install)
 }
 
-// Mengambil Versi Dinamis
+// Fetch Dynamic Version
 $station_version = 'UNKNOWN';
 if (file_exists('version.json')) {
     $v_data = json_decode(file_get_contents('version.json'), true);
@@ -44,18 +43,18 @@ if (file_exists('version.json')) {
     }
 }
 
-// Menyesuaikan Pesan Radar berdasarkan Mode
+// Adjust Radar Message based on Bunker Mode
 $radar_msg = ($bunker_mode === '1') 
     ? 'Awaiting handshakes. Private bunker node active.' 
     : 'Awaiting transmissions. Iron Bunker node active.';
 
-// Format Tanda Tangan Digital RELAY STATION
+// RELAY STATION Digital Signature Format
 echo json_encode([
     'status' => 'online',
     'software' => 'relay_station',
     'version' => $station_version,
     'protocol' => 'fediverse_lightweight',
-    'private_node' => ($bunker_mode === '1') ? true : false, // [ NEW ] Mengibarkan bendera akun privat
+    'private_node' => ($bunker_mode === '1') ? true : false, // Flag for private account
     'features' => [
         'media_hotlinking' => true,
         'ghost_protocol' => true,

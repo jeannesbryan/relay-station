@@ -1,23 +1,22 @@
 <?php
 require_once 'ssl_shield.php';
 // RELAY STATION: DISCONNECT PROTOCOL
-// Menghapus koordinat planet dari radar secara manual (Unfollow)
+// Manually remove a planet's coordinates from the radar (Unfollow)
 
 session_start();
 
-// Keamanan: Hanya Kapten yang bisa memutus koneksi
+// Security: Only the Commander can disconnect nodes
 if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     die("UNAUTHORIZED_ACCESS");
 }
 
 if (isset($_GET['id'])) {
     $id = (int)$_GET['id'];
-    $db_file = '../data/relay_core.sqlite';
+    
+    // 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
+    require_once 'db_connect.php';
     
     try {
-        $db = new PDO("sqlite:" . $db_file);
-        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        
         $stmt = $db->prepare("DELETE FROM following WHERE id = :id");
         $stmt->execute([':id' => $id]);
 

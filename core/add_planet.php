@@ -67,18 +67,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     elseif (strpos($node_version, '2.') === 0) { $alias = $alias_base . ' [v2]'; } 
     else { $alias = $alias_base; }
 
-    $db_file = '../data/relay_core.sqlite';
+    // 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
+    require_once 'db_connect.php';
     
     try {
-        $db = new PDO("sqlite:" . $db_file);
-        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        
         $stmt = $db->prepare("INSERT OR IGNORE INTO following (planet_url, alias) VALUES (:url, :alias)");
         $stmt->execute([ ':url' => $planet_url, ':alias' => $alias ]);
 
         // ==========================================
         // 🤝 [ THE HANDSHAKE PROTOCOL ]
-        // Kirim notifikasi "Knock-Knock" ke planet target
+        // Send a "Knock-Knock" notification to the target planet
         // ==========================================
         $handshake_url = $planet_url . '/api_handshake.php';
         $hs_payload = json_encode(['from_planet' => $my_planet_url]);

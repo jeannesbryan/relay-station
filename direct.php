@@ -4,7 +4,6 @@ require_once 'core/ssl_shield.php';
 // 🔒 [ SECURITY OVERRIDE: ENCRYPTED SESSION ]
 // ==========================================
 session_start();
-$db_file = 'data/relay_core.sqlite';
 
 if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     header("Location: console.php"); exit;
@@ -12,11 +11,10 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
 
 date_default_timezone_set('UTC'); 
 
+// 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
+require_once 'core/db_connect.php';
+
 try {
-    $db = new PDO("sqlite:" . $db_file);
-    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $db->setAttribute(PDO::ATTR_TIMEOUT, 5);
-    
     $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'direct' ORDER BY timestamp ASC");
     $transmissions = $query->fetchAll(PDO::FETCH_ASSOC);
 
@@ -25,7 +23,7 @@ try {
 
     // ==========================================
     // 🛠️ [ BUG FIX: AWARENESS FOLDER PATH ]
-    // Mengelompokkan pesan berdasarkan domain & path rekanan
+    // Group messages by partner domain & path
     // ==========================================
     $chat_threads = [];
     foreach ($transmissions as $msg) {
@@ -33,13 +31,13 @@ try {
         if ($msg['is_remote'] == 1) {
             // author_alias format: NAMA@domain.com/folder
             $parts = explode('@', $msg['author_alias']);
-            $partner_id = end($parts); // Menghasilkan: domain.com/folder
+            $partner_id = end($parts); // Yields: domain.com/folder
         } else {
             // target_planet format: https://domain.com/folder
             $parsed = parse_url($msg['target_planet']);
             $host = $parsed['host'] ?? '';
             $path = rtrim($parsed['path'] ?? '', '/');
-            $partner_id = $host . $path; // Menghasilkan: domain.com/folder
+            $partner_id = $host . $path; // Yields: domain.com/folder
         }
         
         if (!empty($partner_id)) {
@@ -188,7 +186,7 @@ try {
         });
 
         // ==========================================
-        // 🔐 THE DECRYPTOR (Membaca Pesan E2E)
+        // 🔐 THE DECRYPTOR (Read E2E Messages)
         // ==========================================
         window.addEventListener('DOMContentLoaded', async () => {
             const privPem = localStorage.getItem('relay_privkey');
@@ -208,10 +206,10 @@ try {
                 const dec = new TextDecoder();
                 const msgs = document.querySelectorAll('.e2e-msg');
                 
-                // 3. Eksekusi Dekripsi Masal
+                // 3. Execute Mass Decryption
                 for(let msg of msgs) {
                     const cipherText = msg.getAttribute('data-cipher');
-                    // Cek apakah teksnya cukup panjang untuk dianggap sebagai Base64 RSA
+                    // Check if text is long enough to be considered Base64 RSA
                     if (cipherText.length > 200 && /^[A-Za-z0-9+/=]+$/.test(cipherText)) {
                         try {
                             const cBinStr = window.atob(cipherText);
@@ -222,11 +220,11 @@ try {
                                 { name: "RSA-OAEP" }, privateKey, cBytes.buffer
                             );
                             
-                            // Ganti teks acak dengan teks asli, beri warna hijau redup sebagai tanda berhasil
+                            // Replace cipher with plain text, apply dim green color to indicate success
                             msg.innerHTML = dec.decode(decrypted).replace(/\n/g, '<br>');
                             msg.style.color = "var(--t-green-dim)";
                         } catch(e) {
-                            // Jika gagal (mungkin kuncinya salah), biarkan sebagai teks acak
+                            // If failed (wrong key), leave as cipher text
                             console.log('Decryption skip: ', e);
                         }
                     }
@@ -237,7 +235,7 @@ try {
         });
 
         // ==========================================
-        // 🔐 THE ENCRYPTOR (Mencegat Form Pengiriman)
+        // 🔐 THE ENCRYPTOR (Intercept Submission Form)
         // ==========================================
         const replyForm = document.getElementById('reply-form');
         replyForm.addEventListener('submit', async function(e) {
@@ -275,11 +273,11 @@ try {
                 const localPubKey = await importPubKey(localPem);
                 const encodedMsg = new TextEncoder().encode(rawContent);
 
-                // 2. Encrypt for Target (Kapsul Luar)
+                // 2. Encrypt for Target (Outer Capsule)
                 const cipherTarget = await window.crypto.subtle.encrypt({ name: "RSA-OAEP" }, targetPubKey, encodedMsg);
                 const base64Target = window.btoa(String.fromCharCode.apply(null, new Uint8Array(cipherTarget)));
 
-                // 3. Encrypt for Local (Kapsul Dalam)
+                // 3. Encrypt for Local (Inner Capsule)
                 const cipherLocal = await window.crypto.subtle.encrypt({ name: "RSA-OAEP" }, localPubKey, encodedMsg);
                 const base64Local = window.btoa(String.fromCharCode.apply(null, new Uint8Array(cipherLocal)));
 

@@ -7,18 +7,18 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) { die("
 
 if (isset($_GET['id'])) {
     $id = (int)$_GET['id'];
-    $db_file = '../data/relay_core.sqlite';
+    
+    // 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
+    require_once 'db_connect.php';
+    
     try {
-        $db = new PDO("sqlite:" . $db_file);
-        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        
         $stmt = $db->prepare("DELETE FROM alerts WHERE id = :id");
         $stmt->execute([':id' => $id]);
         
-        // Cek jika ini via AJAX (Follow Back)
+        // Check if this is an AJAX request (Follow Back)
         if (isset($_GET['ajax'])) { echo "OK"; exit; }
         
-        // Cek jika ini dari tombol Baca DM
+        // Check if this is a redirect from 'Read DM' button
         if (isset($_GET['redirect']) && $_GET['redirect'] == 'direct') {
             header("Location: ../direct.php"); exit;
         }
