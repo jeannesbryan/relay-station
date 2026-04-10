@@ -44,7 +44,6 @@ try {
         }
     }
 
-    // [ BUG FIX ]: Always fetch the latest row
     $stmt = $db->query("SELECT config_value FROM system_config WHERE config_key = 'captain_hash' ORDER BY rowid DESC LIMIT 1");
     $captain_hash = $stmt->fetchColumn();
     $stmt = null; 
@@ -101,27 +100,21 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     echo '</head><body class="t-crt t-center-screen">';
     echo '<div class="t-center-box t-card danger mb-0">';
     echo '<h2 class="t-card-header t-flicker">> RESTRICTED AREA</h2>';
-    
     if($login_error) echo '<div class="t-alert danger text-left mb-3">' . $login_error . '</div>';
-    
     echo '<form method="POST" class="m-0">';
     echo '<div class="t-input-group mb-4">';
-    
     if ($is_locked) {
         echo '<input type="password" disabled class="t-input text-center font-bold" placeholder="[ RADAR FROZEN ]" style="letter-spacing: 5px;">';
     } else {
         echo '<input type="password" id="loginPass" name="passcode" class="t-input text-center font-bold" placeholder="ENTER PASSCODE" autofocus style="letter-spacing: 5px;">';
         echo '<button type="button" class="t-input-action-btn" onclick="Terminal.toggleInputAction(\'loginPass\', this)">[ SHOW ]</button>';
     }
-    
     echo '</div>';
-    
     if ($is_locked) {
         echo '<button type="button" disabled class="t-btn w-100 font-bold" style="border-color: var(--t-red); color: var(--t-red); opacity: 0.5; cursor: not-allowed;">[ SYSTEM_LOCKED ]</button>';
     } else {
         echo '<button type="submit" class="t-btn danger w-100 font-bold t-glow">[ OVERRIDE_SYSTEM ]</button>';
     }
-    
     echo '</form></div>';
     echo '<script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>';
     echo '</body></html>'; exit;
@@ -131,11 +124,23 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
 // 🚀 [ MAIN DASHBOARD PROCESSOR ]
 // ==========================================
 try {
+    // 🎛️ [ AJAX ENDPOINT: SAVE CONTROL ROOM ]
+    if (isset($_POST['action']) && $_POST['action'] === 'save_control_room') {
+        $name = trim($_POST['station_name'] ?? 'RELAY_STATION');
+        $bio = trim($_POST['station_bio'] ?? '');
+        
+        $db->prepare("DELETE FROM system_config WHERE config_key IN ('station_name', 'station_bio')")->execute();
+        
+        $stmt = $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES (?, ?)");
+        $stmt->execute(['station_name', $name]);
+        $stmt->execute(['station_bio', $bio]);
+        exit;
+    }
+
     // 🔐 [ AJAX ENDPOINT: SAVE PUBLIC KEY ]
     if (isset($_POST['action']) && $_POST['action'] === 'save_pubkey') {
         $pubkey = trim($_POST['public_key'] ?? '');
         if (!empty($pubkey)) {
-            // [ BUG FIX ]: Purge old keys to prevent duplicates, then insert new
             $db->prepare("DELETE FROM system_config WHERE config_key = 'public_key'")->execute();
             $stmt = $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('public_key', :val)");
             $stmt->execute([':val' => $pubkey]);
@@ -146,7 +151,6 @@ try {
     // 🚧 [ AJAX ENDPOINT: TOGGLE BUNKER MODE ]
     if (isset($_POST['action']) && $_POST['action'] === 'toggle_bunker') {
         $new_state = ($_POST['state'] === '1') ? '1' : '0';
-        // [ BUG FIX ]: Purge old state to prevent duplicates, then insert new
         $db->prepare("DELETE FROM system_config WHERE config_key = 'bunker_mode'")->execute();
         $stmt = $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('bunker_mode', :val)");
         $stmt->execute([':val' => $new_state]);
@@ -210,9 +214,15 @@ try {
     $stmt_alerts = $db->query("SELECT * FROM alerts WHERE is_read = 0 ORDER BY id DESC");
     $active_alerts = $stmt_alerts->fetchAll(PDO::FETCH_ASSOC);
 
-    // [ BUG FIX ]: Fetch Bunker Mode Status (Latest)
+    // 🎛️ FETCH SYSTEM CONFIGURATIONS
     $stmt_bunker = $db->query("SELECT config_value FROM system_config WHERE config_key = 'bunker_mode' ORDER BY rowid DESC LIMIT 1");
     $bunker_mode = $stmt_bunker->fetchColumn() ?: '0';
+
+    $stmt_name = $db->query("SELECT config_value FROM system_config WHERE config_key = 'station_name' ORDER BY rowid DESC LIMIT 1");
+    $station_name = $stmt_name->fetchColumn() ?: 'RELAY_STATION';
+
+    $stmt_bio = $db->query("SELECT config_value FROM system_config WHERE config_key = 'station_bio' ORDER BY rowid DESC LIMIT 1");
+    $station_bio = $stmt_bio->fetchColumn() ?: '';
 
 } catch (PDOException $e) {
     die("<h3 class='t-alert danger'>[ CRITICAL ERROR ] Core Memory Data Fetch Failed.</h3>");
@@ -246,13 +256,14 @@ try {
     <div class="t-container-fluid pt-0">
         <nav class="t-navbar mt-3 mb-4">
             <div class="t-nav-brand">
-                <span class="t-led-dot t-led-green"></span> RELAY_STATION 
+                <span class="t-led-dot t-led-green"></span> <?php echo htmlspecialchars($station_name); ?> 
                 <span class="fs-small text-muted fw-normal ml-2">v<?php echo htmlspecialchars($station_version); ?></span>
                 <?php if (count($active_alerts) > 0): ?>
                     <span class="text-warning t-blink ml-2 fw-normal" style="font-size:12px;">[ 🔔 <?php echo count($active_alerts); ?> NEW ]</span>
                 <?php endif; ?>
             </div>
             <div class="t-nav-menu">
+                <button onclick="document.getElementById('control-room-modal').style.display='flex';" class="t-btn t-btn-sm" title="Configure Station">[ CONTROL_ROOM ]</button>
                 <button id="installAppBtn" class="t-btn t-btn-sm">[ INSTALL PWA ]</button>
                 <a href="core/updater.php" class="t-btn warning t-btn-sm" title="Check System Update">[ SYS_UPDATE ]</a>
                 <a href="console.php?logout=true" class="t-btn danger t-btn-sm">> LOGOUT</a>
@@ -422,8 +433,59 @@ try {
         </div>
     </div>
 
+    <div id="control-room-modal" class="t-splash" style="display:none; z-index: 1000; background: rgba(0,0,0,0.85); flex-direction: column; justify-content: center; align-items: center;">
+        <div class="t-card" style="width: 90%; max-width: 500px; border-color: var(--t-green);">
+            <div class="t-card-header d-flex justify-content-between align-items-center">
+                <span class="font-bold text-success">> 🎛️ THE_CONTROL_ROOM</span>
+                <button type="button" onclick="document.getElementById('control-room-modal').style.display='none';" class="t-btn danger t-btn-sm" style="padding: 2px 8px;">[ X ]</button>
+            </div>
+            <div class="p-3">
+                <form id="control-room-form" class="m-0">
+                    <div class="mb-3">
+                        <label class="t-form-label">> STATION_NAME</label>
+                        <input type="text" id="cr-name" class="t-input font-bold text-success" value="<?php echo htmlspecialchars($station_name); ?>" maxlength="30" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="t-form-label">> STATION_BIO / BROADCAST_MESSAGE</label>
+                        <textarea id="cr-bio" class="t-textarea" rows="3" maxlength="160" placeholder="> Enter public station description..."><?php echo htmlspecialchars($station_bio); ?></textarea>
+                    </div>
+                    <button type="submit" class="t-btn warning w-100 font-bold t-glow">[ APPLY_CONFIGURATION ]</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
+        // ==========================================
+        // 🎛️ [ THE CONTROL ROOM ENGINE ]
+        // ==========================================
+        const crForm = document.getElementById('control-room-form');
+        if (crForm) {
+            crForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const btn = this.querySelector('button[type="submit"]');
+                btn.innerText = '[ UPDATING_CORE_MEMORY... ]';
+                
+                const newName = document.getElementById('cr-name').value;
+                const newBio = document.getElementById('cr-bio').value;
+                
+                const formData = new FormData();
+                formData.append('action', 'save_control_room');
+                formData.append('station_name', newName);
+                formData.append('station_bio', newBio);
+                
+                try {
+                    await fetch('console.php', { method: 'POST', body: formData });
+                    Terminal.toast('[✓] STATION CONFIGURATION UPDATED', 'success');
+                    setTimeout(() => location.reload(), 1000);
+                } catch (err) {
+                    Terminal.toast('[!] CONFIGURATION UPDATE FAILED', 'danger');
+                    btn.innerText = '[ APPLY_CONFIGURATION ]';
+                }
+            });
+        }
+
         // ==========================================
         // 🚧 [ BUNKER MODE: THE TOGGLE ENGINE ]
         // ==========================================

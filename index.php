@@ -1,8 +1,9 @@
 <?php
 require_once 'core/ssl_shield.php';
 // ==========================================
-// 📡 RELAY STATION: PUBLIC HOLOGRAM
-// The station's interface for public visitors (Read-Only)
+// 📡 RELAY STATION: PUBLIC HOLOGRAM (SOVEREIGN PROFILE)
+// The station's interface for public visitors. 
+// Now strictly displays only local transmissions.
 // ==========================================
 
 // ⚙️ [ AUTO-DETECT SYSTEM COORDINATES ]
@@ -23,12 +24,15 @@ if (file_exists('version.json')) {
 require_once 'core/db_connect.php';
 
 try {
-    // ==========================================
-    // 🚧 [ CHECK STATION MODE: BUNKER STATUS ]
-    // [ BUG FIX ]: Selalu ambil baris data terbaru (terbawah) dari tabel
-    // ==========================================
+    // 🎛️ [ FETCH SYSTEM CONFIGURATIONS ]
     $stmt_bunker = $db->query("SELECT config_value FROM system_config WHERE config_key = 'bunker_mode' ORDER BY rowid DESC LIMIT 1");
     $bunker_mode = $stmt_bunker->fetchColumn() ?: '0';
+
+    $stmt_name = $db->query("SELECT config_value FROM system_config WHERE config_key = 'station_name' ORDER BY rowid DESC LIMIT 1");
+    $station_name = $stmt_name->fetchColumn() ?: 'RELAY_STATION';
+
+    $stmt_bio = $db->query("SELECT config_value FROM system_config WHERE config_key = 'station_bio' ORDER BY rowid DESC LIMIT 1");
+    $station_bio = $stmt_bio->fetchColumn() ?: '';
 
     // 🔄 [ AJAX ENDPOINT: CURSOR-BASED PAGINATION ]
     if (isset($_GET['last_id'])) {
@@ -36,19 +40,19 @@ try {
         if ($bunker_mode == '1') { exit; }
 
         $last_id = (int)$_GET['last_id'];
-        // [ BUG FIX ]: Hapus filter is_remote = 1 agar pesan lokal juga terambil
-        $stmt = $db->prepare("SELECT * FROM transmissions WHERE visibility = 'public' AND id < :last_id ORDER BY id DESC LIMIT 15");
+        
+        // [ SOVEREIGN LOCK ]: Only fetch is_remote = 0 (Local Transmissions)
+        $stmt = $db->prepare("SELECT * FROM transmissions WHERE visibility = 'public' AND is_remote = 0 AND id < :last_id ORDER BY id DESC LIMIT 15");
         $stmt->execute([':last_id' => $last_id]);
         $transmissions = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($transmissions as $msg) {
-            $author = htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN');
+            $author = htmlspecialchars($msg['author_alias'] ?? 'LOCAL_COMMAND');
             $img = !empty($msg['media_url']) ? '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" class="t-hologram-img" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>' : '';
-            $src_label = $msg['is_remote'] ? 'INCOMING FROM:' : 'LOCAL_AUTHOR:';
             
             echo "<div class='t-card mb-3 p-3 transmission-card' data-id='{$msg['id']}'>
                     <div class='t-bubble-meta t-border-bottom pb-2 mb-2'>
-                        <span>[ {$msg['timestamp']} UTC ] $src_label <strong class='text-success'>$author</strong></span>
+                        <span>[ {$msg['timestamp']} UTC ] LOCAL_TRANSMISSION: <strong class='text-success'>$author</strong></span>
                     </div>
                     <p class='m-0' style='font-size: 14px;'>".nl2br(htmlspecialchars($msg['content']))."</p> $img
                   </div>";
@@ -59,8 +63,8 @@ try {
     // If Bunker Mode is active, do not fetch message data into memory
     $transmissions = [];
     if ($bunker_mode == '0') {
-        // [ BUG FIX ]: Hapus filter is_remote = 1
-        $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'public' ORDER BY id DESC LIMIT 15");
+        // [ SOVEREIGN LOCK ]: Only fetch is_remote = 0
+        $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'public' AND is_remote = 0 ORDER BY id DESC LIMIT 15");
         $transmissions = $query->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -74,7 +78,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RELAY | Public Hologram</title>
+    <title><?php echo htmlspecialchars($station_name); ?> | Public Hologram</title>
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.css">
@@ -87,7 +91,14 @@ try {
 
     <div class="t-container mt-5">
         <header class="text-center mb-5">
-            <h1 class="text-success font-bold mb-0" style="letter-spacing: 5px;">> RELAY_STATION</h1>
+            <h1 class="text-success font-bold mb-0" style="letter-spacing: 5px;">> <?php echo htmlspecialchars($station_name); ?></h1>
+            
+            <?php if (!empty($station_bio)): ?>
+                <div class="text-muted mt-3 mb-2" style="max-width: 600px; margin: 0 auto; font-size: 0.95rem; line-height: 1.5;">
+                    <?php echo nl2br(htmlspecialchars($station_bio)); ?>
+                </div>
+            <?php endif; ?>
+            
             <div class="text-muted fs-small mt-2">[ COORDINATES: <?php echo htmlspecialchars($station_coordinates); ?> ]</div>
         </header>
 
@@ -103,19 +114,18 @@ try {
         <?php else: ?>
             <div class="t-grid-layout" style="grid-template-columns: 1fr;">
                 <main class="t-main-panel">
-                    <h2 class="t-card-header">> 📡 INCOMING_TRANSMISSIONS_LOG</h2>
+                    <h2 class="t-card-header">> 📡 STATION_BROADCAST_LOG</h2>
                     
                     <div id="signal-log">
                         <?php if (empty($transmissions)): ?>
-                            <div class="text-center text-muted py-5 t-border border-dashed">[ NO PUBLIC SIGNALS DETECTED ]</div>
+                            <div class="text-center text-muted py-5 t-border border-dashed">[ NO LOCAL BROADCASTS DETECTED ]</div>
                         <?php else: ?>
                             <?php foreach ($transmissions as $msg): ?>
                                 <div class="t-card mb-3 p-3 transmission-card" data-id="<?php echo $msg['id']; ?>">
                                     <div class="t-bubble-meta t-border-bottom pb-2 mb-2">
                                         <span>
-                                            [ <?php echo $msg['timestamp']; ?> UTC ] 
-                                            <?php echo $msg['is_remote'] ? 'INCOMING FROM:' : 'LOCAL_AUTHOR:'; ?> 
-                                            <strong class="text-success"><?php echo htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN'); ?></strong>
+                                            [ <?php echo $msg['timestamp']; ?> UTC ] LOCAL_TRANSMISSION:  
+                                            <strong class="text-success"><?php echo htmlspecialchars($msg['author_alias'] ?? 'LOCAL_COMMAND'); ?></strong>
                                         </span>
                                     </div>
                                     <p class="m-0" style="font-size: 14px;">
@@ -133,7 +143,7 @@ try {
 
                     <?php if (!empty($transmissions)): ?>
                         <div id="load-more" class="text-center mt-3 text-muted" style="border-top:1px dashed var(--t-green); padding-top:15px; padding-bottom:30px;">
-                            [ SCROLL DOWN TO SCAN DEEP SPACE ]
+                            [ SCROLL DOWN TO SCAN ARCHIVES ]
                         </div>
                     <?php endif; ?>
                 </main>
@@ -147,7 +157,7 @@ try {
     </div>
 
     <script>
-        // 🔄 [ BUG FIX: CURSOR-BASED INFINITE SCROLL ]
+        // 🔄 [ CURSOR-BASED INFINITE SCROLL ]
         let isFetching = false;
         const loadMoreEl = document.getElementById('load-more');
         const bunkerActive = <?php echo $bunker_mode; ?>;
@@ -156,7 +166,7 @@ try {
             const observer = new IntersectionObserver((entries) => {
                 if(entries[0].isIntersecting && !isFetching) {
                     isFetching = true;
-                    loadMoreEl.innerText = '[ RECEIVING SIGNALS... ]';
+                    loadMoreEl.innerText = '[ RETRIEVING ARCHIVES... ]';
                     
                     const cards = document.querySelectorAll('.transmission-card');
                     if (cards.length === 0) return;
@@ -168,7 +178,7 @@ try {
                         if(html.trim() !== '') {
                             document.getElementById('signal-log').insertAdjacentHTML('beforeend', html);
                             isFetching = false;
-                            loadMoreEl.innerText = '[ SCROLL DOWN TO SCAN DEEP SPACE ]';
+                            loadMoreEl.innerText = '[ SCROLL DOWN TO SCAN ARCHIVES ]';
                         } else {
                             loadMoreEl.innerText = '[ END OF TRANSMISSIONS ]';
                             observer.disconnect();

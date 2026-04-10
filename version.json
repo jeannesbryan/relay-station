@@ -1,7 +1,7 @@
 {
-    "version": "5.0",
+    "version": "5.1",
     "codename": "Tactical Operator",
     "status": "stable",
-    "changelog": "TACTICAL OPERATOR V5.0:\n- [CORE] SQLite WAL Mode: Centralized database connection (db_connect.php) for high concurrency and zero database-locking.\n- [BUG FIX] Resolved Bunker Mode toggle duplication in system configuration.\n- [BUG FIX] Fixed Public Hologram radar to correctly display local commander transmissions.\n- [REFACTOR] Codebase standardization and English translation of core operations.",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v5.0/Relay-OTA-Update-v5.0.zip"
+    "changelog": "TACTICAL OPERATOR V5.1:\n- [UI] The Control Room: Centralized dashboard overlay to easily configure Station Name and Bio.\n- [RADAR] Sovereign Profile: Public Hologram now strictly displays only local transmissions, acting as a personal broadcast profile.\n- [COMMS] Purge Protocol: Added 'Purge Link' functionality to permanently delete local E2E Direct Message histories.",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v5.1/Relay-OTA-Update-v5.1.zip"
 }

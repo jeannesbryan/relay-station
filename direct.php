@@ -14,6 +14,19 @@ date_default_timezone_set('UTC');
 // 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
 require_once 'core/db_connect.php';
 
+// 🗑️ [ AJAX ENDPOINT: PURGE DM ROOM ]
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'purge_room') {
+    $domain = trim($_POST['target_domain'] ?? '');
+    if (!empty($domain)) {
+        try {
+            $like_domain = '%' . $domain . '%';
+            $stmt = $db->prepare("DELETE FROM transmissions WHERE visibility = 'direct' AND (target_planet LIKE :d1 OR author_alias LIKE :d2)");
+            $stmt->execute([':d1' => $like_domain, ':d2' => $like_domain]);
+        } catch (PDOException $e) {}
+    }
+    exit;
+}
+
 try {
     $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'direct' ORDER BY timestamp ASC");
     $transmissions = $query->fetchAll(PDO::FETCH_ASSOC);
@@ -22,22 +35,22 @@ try {
     $star_chart = $query_stars->fetchAll(PDO::FETCH_ASSOC);
 
     // ==========================================
-    // 🛠️ [ BUG FIX: AWARENESS FOLDER PATH ]
+    // 🛠️ [ AWARENESS FOLDER PATH GROUPING ]
     // Group messages by partner domain & path
     // ==========================================
     $chat_threads = [];
     foreach ($transmissions as $msg) {
         $partner_id = '';
         if ($msg['is_remote'] == 1) {
-            // author_alias format: NAMA@domain.com/folder
+            // author_alias format: NAME@domain.com/folder
             $parts = explode('@', $msg['author_alias']);
-            $partner_id = end($parts); // Yields: domain.com/folder
+            $partner_id = end($parts); 
         } else {
             // target_planet format: https://domain.com/folder
             $parsed = parse_url($msg['target_planet']);
             $host = $parsed['host'] ?? '';
             $path = rtrim($parsed['path'] ?? '', '/');
-            $partner_id = $host . $path; // Yields: domain.com/folder
+            $partner_id = $host . $path; 
         }
         
         if (!empty($partner_id)) {
@@ -79,7 +92,7 @@ try {
 
     <div class="t-container-fluid mt-4">
         <nav class="t-navbar mb-4">
-            <div class="t-nav-brand"><span class="t-led-dot t-led-green t-blink"></span></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">> SECURE_COMMS (E2E) v4.2</span></div>
+            <div class="t-nav-brand"><span class="t-led-dot t-led-green t-blink"></span></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">> SECURE_COMMS (E2E) v5.0</span></div>
             <div class="t-nav-menu">
                 <a href="console.php" class="t-btn t-btn-sm">[ RETURN_TO_TIMELINE ]</a>
             </div>
@@ -116,7 +129,11 @@ try {
                 <div id="chat-container" class="flex-grow-1">
                     <?php foreach ($chat_threads as $domain => $thread): ?>
                         <div id="thread-<?php echo htmlspecialchars($domain); ?>" class="chat-thread pb-3">
-                            <h3 class="text-warning mb-4 t-border-bottom pb-2">> LINK ESTABLISHED: <?php echo htmlspecialchars($domain); ?> <span class="fs-small t-blink">[ 🔐 E2E SECURED ]</span></h3>
+                            
+                            <h3 class="text-warning mb-4 t-border-bottom pb-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <span>> LINK ESTABLISHED: <?php echo htmlspecialchars($domain); ?> <span class="fs-small t-blink">[ 🔐 E2E SECURED ]</span></span>
+                                <button onclick="purgeRoom('<?php echo htmlspecialchars($domain); ?>')" class="t-btn danger t-btn-sm" style="padding: 2px 8px; font-size: 11px;" title="Purge Local Records">[ 🗑️ PURGE_LINK ]</button>
+                            </h3>
                             
                             <?php foreach ($thread as $msg): 
                                 $is_me = ($msg['is_remote'] == 0);
@@ -151,7 +168,6 @@ try {
 
                 <form action="core/transmitter.php" method="POST" enctype="multipart/form-data" id="reply-form" style="display:none;" class="m-0 mt-3 t-card p-3">
                     <input type="hidden" name="visibility" value="direct">
-                    
                     <input type="hidden" name="content_local" id="content-local-input">
 
                     <div class="mb-2">
@@ -184,6 +200,27 @@ try {
         document.getElementById('content-input').addEventListener('input', function() {
             document.getElementById('char-counter').innerText = this.value.length + ' / 180 Bytes';
         });
+
+        // ==========================================
+        // 🗑️ [ ROOM PURGE PROTOCOL ]
+        // ==========================================
+        async function purgeRoom(domain) {
+            if (confirm('> WARNING: This will permanently delete all local records of this communication link. Continue?')) {
+                Terminal.splash.show('> PURGING_LOCAL_RECORDS...');
+                const formData = new FormData();
+                formData.append('action', 'purge_room');
+                formData.append('target_domain', domain);
+                
+                try {
+                    await fetch('direct.php', { method: 'POST', body: formData });
+                    Terminal.toast('[✓] LINK PURGED SUCCESSFULLY', 'success');
+                    setTimeout(() => location.reload(), 1000);
+                } catch(err) {
+                    Terminal.splash.hide();
+                    Terminal.toast('[!] PURGE FAILED', 'danger');
+                }
+            }
+        }
 
         // ==========================================
         // 🔐 THE DECRYPTOR (Read E2E Messages)
