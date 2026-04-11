@@ -80,6 +80,23 @@ try {
         
         /* PTT Button specific styling to prevent text selection while holding */
         #ptt-btn { user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+
+        /* V5.5 THE MATRIX GRID */
+        .media-matrix { display: grid; gap: 8px; margin-top: 10px; }
+        .media-matrix-1 { grid-template-columns: 1fr; }
+        .media-matrix-2 { grid-template-columns: 1fr 1fr; }
+        .media-matrix-3 { grid-template-columns: 1fr 1fr; }
+        .media-matrix-3 .matrix-item:first-child { grid-column: span 2; }
+        .media-matrix-4 { grid-template-columns: 1fr 1fr; }
+        
+        .matrix-item { position: relative; overflow: hidden; border-radius: 4px; border: 1px dashed var(--t-green); background: var(--bg-base); aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; }
+        .matrix-item.audio-cell { aspect-ratio: auto; min-height: 50px; border-style: dotted; border-color: var(--t-yellow); }
+        
+        .matrix-img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(100%) sepia(100%) hue-rotate(80deg) brightness(0.7) contrast(1.2); transition: 0.3s; }
+        .matrix-img:hover { filter: none; }
+        
+        .matrix-video { width: 100%; height: 100%; object-fit: cover; filter: grayscale(100%) sepia(100%) hue-rotate(80deg) brightness(0.7) contrast(1.2); transition: 0.3s; }
+        .matrix-video:hover, .matrix-video:focus, .matrix-video:active { filter: none; outline: none; }
     </style>
 </head>
 <body class="t-crt">
@@ -92,7 +109,7 @@ try {
 
     <div class="t-container-fluid mt-4">
         <nav class="t-navbar mb-4">
-            <div class="t-nav-brand"><span class="t-led-dot t-led-green t-blink"></span></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">> SECURE_COMMS (E2E) v5.4</span></div>
+            <div class="t-nav-brand"><span class="t-led-dot t-led-green t-blink"></span></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">> SECURE_COMMS (E2E) v5.5</span></div>
             <div class="t-nav-menu">
                 <a href="console.php" class="t-btn t-btn-sm">[ RETURN_TO_TIMELINE ]</a>
             </div>
@@ -154,7 +171,7 @@ try {
                                         <?php endif; ?>
                                     </div>
                                     <div class="p-2 px-3" style="
-                                        max-width: 80%; 
+                                        max-width: 80%; width: 100%;
                                         border: 1px solid var(--t-<?php echo $is_me ? 'green' : 'yellow'; ?>); 
                                         background: rgba(<?php echo $is_me ? '0,255,65,0.05' : '255,255,0,0.05'; ?>);
                                         border-radius: 4px;
@@ -164,19 +181,43 @@ try {
                                         </p>
                                         
                                         <?php if(!empty($msg['media_url'])): 
-                                            $ext = strtolower(pathinfo($msg['media_url'], PATHINFO_EXTENSION));
-                                            $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4']);
+                                            // Check if JSON Array (V5.5) or Single String (Legacy)
+                                            $media_items = [];
+                                            if (strpos($msg['media_url'], '[') === 0) {
+                                                $media_items = json_decode($msg['media_url'], true) ?? [];
+                                            } else {
+                                                $media_items = [$msg['media_url']];
+                                            }
+                                            
+                                            $m_count = count($media_items);
+                                            if ($m_count > 0):
                                         ?>
-                                            <div class="mt-2 text-<?php echo $is_me ? 'right' : 'left'; ?>">
-                                                <?php if($is_audio): ?>
-                                                    <button type="button" class="t-btn <?php echo $is_me ? 'warning' : 'danger'; ?> t-btn-sm audio-play-btn" data-src="<?php echo htmlspecialchars($msg['media_url']); ?>" style="font-size: 11px;">
-                                                        [ ▶️ PLAY AUDIO_LOG ]
-                                                    </button>
-                                                <?php else: ?>
-                                                    <img src="<?php echo htmlspecialchars($msg['media_url']); ?>" alt="Secure Media" style="max-width: 100%; border: 1px dashed var(--t-<?php echo $is_me ? 'green' : 'yellow'; ?>); border-radius: 4px;">
-                                                <?php endif; ?>
+                                            <div class="media-matrix media-matrix-<?php echo min($m_count, 4); ?>">
+                                                <?php foreach(array_slice($media_items, 0, 4) as $url): 
+                                                    $ext = strtolower(pathinfo($url, PATHINFO_EXTENSION));
+                                                    $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a']);
+                                                    $is_video = in_array($ext, ['mp4']);
+                                                ?>
+                                                    <?php if($is_audio): ?>
+                                                        <div class="matrix-item audio-cell p-2">
+                                                            <button type="button" class="t-btn <?php echo $is_me ? 'warning' : 'danger'; ?> w-100 audio-play-btn" data-src="<?php echo htmlspecialchars($url); ?>" style="font-size: 11px;">
+                                                                [ ▶️ PLAY AUDIO_LOG ]
+                                                            </button>
+                                                        </div>
+                                                    <?php elseif($is_video): ?>
+                                                        <div class="matrix-item">
+                                                            <video class="matrix-video" controls preload="metadata">
+                                                                <source src="<?php echo htmlspecialchars($url); ?>" type="video/mp4">
+                                                            </video>
+                                                        </div>
+                                                    <?php else: ?>
+                                                        <div class="matrix-item">
+                                                            <img src="<?php echo htmlspecialchars($url); ?>" class="matrix-img" alt="Secure Media">
+                                                        </div>
+                                                    <?php endif; ?>
+                                                <?php endforeach; ?>
                                             </div>
-                                        <?php endif; ?>
+                                        <?php endif; endif; ?>
                                     </div>
                                 </div>
                             <?php endforeach; ?>
@@ -187,19 +228,23 @@ try {
                 <form action="core/transmitter.php" method="POST" enctype="multipart/form-data" id="reply-form" style="display:none;" class="m-0 mt-3 t-card p-3">
                     <input type="hidden" name="visibility" value="direct">
                     <input type="hidden" name="content_local" id="content-local-input">
-                    <input type="hidden" name="audio_base64" id="audio-base64"> <div class="mb-2">
+                    
+                    <input type="hidden" name="media_base64" id="media-base64"> <input type="hidden" name="audio_base64" id="audio-base64"> 
+
+                    <div class="mb-2">
                         <label class="t-form-label">> TARGET_COORDINATES (URL)</label>
                         <input type="url" name="target_planet" id="target-input" class="t-input m-0 text-warning font-bold" placeholder="https://domain.com" required>
                     </div>
                     
-                    <textarea name="content" id="content-input" rows="2" maxlength="180" class="t-textarea mb-1" placeholder="> Enter secure transmission (Max 180 Chars)..."></textarea>
+                    <textarea name="content" id="content-input" rows="2" class="t-textarea mb-1" placeholder="> Enter secure transmission (Max 180 Chars)..."></textarea>
                     <div class="text-right text-muted fs-small mb-2" id="char-counter">0 / 180 Bytes</div>
 
                     <div class="mb-3 mt-2 d-flex align-items-center gap-2 flex-wrap">
-                        <input type="file" name="media" accept="image/*,audio/*" class="t-input m-0" id="media-input" style="display: none;">
+                        <input type="file" name="media[]" accept="image/*,video/mp4,audio/*" multiple class="t-input m-0" id="media-input" style="display: none;">
                         <button type="button" class="t-btn t-btn-sm" onclick="document.getElementById('media-input').click();" style="white-space: nowrap;">[ ATTACH_FILE ]</button>
                         <button type="button" class="t-btn danger t-btn-sm font-bold" id="ptt-btn" style="white-space: nowrap;" title="Hold to record transmission">[ 🎙️ HOLD_TO_TALK ]</button>
                         <span id="file-name-display" class="fs-small text-muted" style="flex-grow:1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">> NO_MEDIA</span>
+                        <span id="compress-status" class="fs-small text-warning font-bold"></span>
                     </div>
 
                     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -216,8 +261,13 @@ try {
 
     <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
-        // Character Counter
+        // ==========================================
+        // 🛡️ [ BUG FIX: JS-LEVEL MAXLENGTH ENFORCER ]
+        // ==========================================
         document.getElementById('content-input').addEventListener('input', function() {
+            if (this.value.length > 180) {
+                this.value = this.value.substring(0, 180); 
+            }
             document.getElementById('char-counter').innerText = this.value.length + ' / 180 Bytes';
         });
 
@@ -235,7 +285,6 @@ try {
             const ctx = getAudioCtx();
             const duration = 0.15; // 150ms of static
             
-            // 1. White Noise Generator
             const bufferSize = ctx.sampleRate * duration; 
             const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
             const data = buffer.getChannelData(0);
@@ -244,7 +293,6 @@ try {
             const noise = ctx.createBufferSource();
             noise.buffer = buffer;
             
-            // Filter noise to sound like a radio
             const noiseFilter = ctx.createBiquadFilter();
             noiseFilter.type = 'bandpass';
             noiseFilter.frequency.value = 1500;
@@ -257,7 +305,6 @@ try {
             noiseFilter.connect(noiseGain);
             noiseGain.connect(ctx.destination);
             
-            // 2. Tactical Beep (Start = High, Stop = Low)
             const osc = ctx.createOscillator();
             osc.type = 'square';
             osc.frequency.setValueAtTime(type === 'start' ? 2200 : 1200, ctx.currentTime);
@@ -269,7 +316,6 @@ try {
             osc.connect(oscGain);
             oscGain.connect(ctx.destination);
             
-            // Fire!
             noise.start();
             osc.start();
             osc.stop(ctx.currentTime + duration);
@@ -286,6 +332,8 @@ try {
         const fileDisplay = document.getElementById('file-name-display');
         const audioBase64Input = document.getElementById('audio-base64');
         const mediaInput = document.getElementById('media-input');
+        const mediaBase64Input = document.getElementById('media-base64');
+        const compStatus = document.getElementById('compress-status');
 
         async function startRecording() {
             if (isRecording) return;
@@ -302,11 +350,11 @@ try {
                     reader.readAsDataURL(audioBlob);
                     reader.onloadend = () => {
                         audioBase64Input.value = reader.result;
-                        mediaInput.value = ''; // Clear native file input
-                        fileDisplay.innerText = '> [ PTT_AUDIO_READY ]';
+                        // Note: Don't clear mediaInput if they want to mix PTT + Images
+                        fileDisplay.innerText = '> [ AUDIO_LOG_SAVED ]';
                         fileDisplay.className = 'fs-small text-warning font-bold t-blink';
                     };
-                    stream.getTracks().forEach(track => track.stop()); // Release Mic
+                    stream.getTracks().forEach(track => track.stop()); 
                 };
                 
                 mediaRecorder.start();
@@ -335,42 +383,108 @@ try {
             pttBtn.innerText = '[ 🎙️ HOLD_TO_TALK ]';
         }
 
-        // Listeners for Mouse and Touch (Mobile friendly)
         pttBtn.addEventListener('mousedown', startRecording);
         pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); }, {passive: false});
-        
         window.addEventListener('mouseup', stopRecording);
         pttBtn.addEventListener('touchend', stopRecording);
 
-        // Fallback file input UI update
-        mediaInput.addEventListener('change', function(e) {
-            if(e.target.files.length > 0) {
-                audioBase64Input.value = ''; // Clear PTT if a file is manually selected
-                fileDisplay.innerText = '> ' + e.target.files[0].name;
-                fileDisplay.className = 'fs-small text-muted';
+        // ==========================================
+        // 🗜️ [ V5.5 MULTI-MEDIA COMPRESSOR MATRIX ]
+        // ==========================================
+        mediaInput.addEventListener('change', async function(e) {
+            const files = e.target.files;
+            if(files.length === 0) {
+                fileDisplay.innerText = '> NO_MEDIA';
+                compStatus.innerText = '';
+                mediaBase64Input.value = '';
+                return;
+            }
+            
+            // UI Feedback
+            if(files.length > 4) {
+                Terminal.toast('[!] MAX 4 FILES ALLOWED', 'warning');
+            }
+            
+            const processCount = Math.min(files.length, 4);
+            if (processCount === 1) {
+                fileDisplay.innerText = '> ' + files[0].name;
+            } else {
+                fileDisplay.innerText = '> [ ' + processCount + ' MEDIA ATTACHED ]';
+            }
+            fileDisplay.className = 'fs-small text-success font-bold';
+            compStatus.innerText = '[ PROCESSING... ]';
+            
+            let processedBase64Array = [];
+            
+            // Loop through selected files
+            for(let i=0; i < processCount; i++) {
+                const file = files[i];
+                
+                // If Video or Audio, don't compress via Canvas, just pass it to fallback
+                if(file.type.startsWith('video/') || file.type.startsWith('audio/')) {
+                    continue; 
+                }
+                
+                // If Image, compress to WebP
+                if(file.type.startsWith('image/')) {
+                    const b64 = await compressImage(file);
+                    processedBase64Array.push(b64);
+                }
+            }
+            
+            // If we successfully compressed images, pack them into JSON
+            if (processedBase64Array.length > 0) {
+                mediaBase64Input.value = JSON.stringify(processedBase64Array);
+                compStatus.innerText = '[ WEBP COMPRESSED ]';
+            } else {
+                // If all files were videos/audio, empty the Base64 input so fallback kicks in
+                mediaBase64Input.value = '';
+                compStatus.innerText = '[ RAW MEDIA QUEUED ]';
             }
         });
 
+        // Helper function to compress single image
+        function compressImage(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width; let height = img.height;
+                        if(width > 1080) { height = Math.round(height * 1080 / width); width = 1080; } 
+                        canvas.width = width; canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/webp', 0.8));
+                    }
+                    img.src = event.target.result;
+                }
+                reader.readAsDataURL(file);
+            });
+        }
+
         // ==========================================
-        // ▶️ [ RETRO AUDIO PLAYER ]
+        // ▶️ [ DELEGATED RETRO AUDIO PLAYER ]
         // ==========================================
         let currentAudio = null;
         let currentBtn = null;
 
-        document.querySelectorAll('.audio-play-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const src = this.getAttribute('data-src');
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.classList.contains('audio-play-btn')) {
+                const btn = e.target;
+                const src = btn.getAttribute('data-src');
                 
-                if (currentAudio && currentBtn === this) {
+                if (currentAudio && currentBtn === btn) {
                     if (!currentAudio.paused) {
                         currentAudio.pause();
-                        this.innerText = '[ ▶️ PLAY AUDIO_LOG ]';
-                        this.classList.remove('t-blink');
+                        btn.innerText = '[ ▶️ PLAY AUDIO_LOG ]';
+                        btn.classList.remove('t-blink');
                         return;
                     } else {
                         currentAudio.play();
-                        this.innerText = '[ ⏸️ PLAYING... ]';
-                        this.classList.add('t-blink');
+                        btn.innerText = '[ ⏸️ PLAYING... ]';
+                        btn.classList.add('t-blink');
                         return;
                     }
                 }
@@ -384,7 +498,7 @@ try {
                 }
                 
                 currentAudio = new Audio(src);
-                currentBtn = this;
+                currentBtn = btn;
                 currentBtn.innerText = '[ ⏸️ PLAYING... ]';
                 currentBtn.classList.add('t-blink');
                 
@@ -394,7 +508,7 @@ try {
                     currentBtn.innerText = '[ ▶️ PLAY AUDIO_LOG ]';
                     currentBtn.classList.remove('t-blink');
                 };
-            });
+            }
         });
 
         // ==========================================
@@ -479,6 +593,13 @@ try {
             } else if (rawContent.trim() === '') {
                 Terminal.splash.hide();
                 Terminal.toast('[!] TRANSMISSION CANNOT BE EMPTY', 'danger');
+                return;
+            }
+            
+            // 🛡️ [ BUG FIX: Final 180 chars validation before encryption ]
+            if (rawContent.length > 180) {
+                Terminal.splash.hide();
+                Terminal.toast('[!] PAYLOAD EXCEEDS 180 BYTES', 'danger');
                 return;
             }
 

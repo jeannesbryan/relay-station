@@ -58,30 +58,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // ==========================================
-    // 🖼️ & 🎙️ [ MEDIA & PTT AUDIO PROCESSING ]
+    // 🖼️ & 🎙️ [ ADVANCED MEDIA MATRIX (V5.5) ]
     // ==========================================
-    $media_url = null;
+    $final_media_url = null;
+    $media_urls = []; // Container for all processed media
+
     // Skip media processing for Sonar Pulses and ACK Receipts
     if ($visibility !== 'sonar_pulse' && $visibility !== 'ack_receipt') {
         $upload_dir = '../media/';
         if (!is_dir($upload_dir)) { mkdir($upload_dir, 0755, true); }
 
-        // Priority 1: Capture Base64 from JS Compressor (WebP)
+        // Priority 1: Capture Base64 from JS Compressor (WebP/Array)
         if (!empty($_POST['media_base64'])) {
-            $media_base64 = $_POST['media_base64'];
-            list($type, $media_base64) = explode(';', $media_base64);
-            list(, $media_base64)      = explode(',', $media_base64);
-            $media_data = base64_decode($media_base64);
+            $mb_raw = trim($_POST['media_base64']);
+            $mb_items = [];
             
-            $filename = uniqid('sig_') . '.webp';
-            $filepath = $upload_dir . $filename;
-            
-            if (file_put_contents($filepath, $media_data)) {
-                $media_url = $my_planet_url . '/media/' . $filename;
+            // Cek apakah JS mengirimkan Array JSON (Multi-media) atau String tunggal
+            if (strpos($mb_raw, '[') === 0) {
+                $mb_items = json_decode($mb_raw, true) ?? [];
+            } else {
+                $mb_items = [$mb_raw];
+            }
+
+            foreach ($mb_items as $media_base64) {
+                if (empty($media_base64)) continue;
+                list($type, $media_base64) = explode(';', $media_base64);
+                list(, $media_base64)      = explode(',', $media_base64);
+                $media_data = base64_decode($media_base64);
+                
+                $filename = uniqid('sig_') . '.webp';
+                $filepath = $upload_dir . $filename;
+                
+                if (file_put_contents($filepath, $media_data)) {
+                    $media_urls[] = $my_planet_url . '/media/' . $filename;
+                }
             }
         } 
+        
         // Priority 1.5: Capture Base64 from PTT Audio Recorder (WebM/Ogg)
-        elseif (!empty($_POST['audio_base64'])) {
+        if (!empty($_POST['audio_base64'])) {
             $audio_base64 = $_POST['audio_base64'];
             list($type, $audio_base64) = explode(';', $audio_base64);
             list(, $audio_base64)      = explode(',', $audio_base64);
@@ -96,24 +111,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $filepath = $upload_dir . $filename;
             
             if (file_put_contents($filepath, $media_data)) {
-                $media_url = $my_planet_url . '/media/' . $filename;
+                $media_urls[] = $my_planet_url . '/media/' . $filename;
             }
         }
+        
         // Priority 2: Fallback if JS is disabled in browser (Raw Upload)
-        elseif (isset($_FILES['media']) && $_FILES['media']['error'] === UPLOAD_ERR_OK) {
-            $file_ext = strtolower(pathinfo($_FILES['media']['name'], PATHINFO_EXTENSION));
-            // Tambahan format audio untuk mendukung file PTT manual
+        if (empty($_POST['media_base64']) && isset($_FILES['media'])) {
+            $files = $_FILES['media'];
+            
+            // Format array jika atribut multiple aktif di HTML
+            $file_names = is_array($files['name']) ? $files['name'] : [$files['name']];
+            $file_tmp_names = is_array($files['tmp_name']) ? $files['tmp_name'] : [$files['tmp_name']];
+            $file_errors = is_array($files['error']) ? $files['error'] : [$files['error']];
+
             $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4'];
             
-            if (in_array($file_ext, $allowed_ext)) {
-                $prefix = in_array($file_ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4']) ? 'ptt_' : 'sig_';
-                $filename = uniqid($prefix) . '.' . $file_ext;
-                $target_file = $upload_dir . $filename;
-                
-                if (move_uploaded_file($_FILES['media']['tmp_name'], $target_file)) {
-                    $media_url = $my_planet_url . '/media/' . $filename;
+            for ($i = 0; $i < count($file_names); $i++) {
+                if ($file_errors[$i] === UPLOAD_ERR_OK) {
+                    $file_ext = strtolower(pathinfo($file_names[$i], PATHINFO_EXTENSION));
+                    
+                    if (in_array($file_ext, $allowed_ext)) {
+                        $prefix = in_array($file_ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4']) ? 'ptt_' : 'sig_';
+                        $filename = uniqid($prefix) . '.' . $file_ext;
+                        $target_file = $upload_dir . $filename;
+                        
+                        if (move_uploaded_file($file_tmp_names[$i], $target_file)) {
+                            $media_urls[] = $my_planet_url . '/media/' . $filename;
+                        }
+                    }
                 }
             }
+        }
+
+        // 🚧 [ TACTICAL LIMIT ]: Maksimal 4 Media (Grid 2x2)
+        if (count($media_urls) > 4) {
+            $media_urls = array_slice($media_urls, 0, 4);
+        }
+
+        // 🗄️ [ SMART STORAGE FORMATTER ]
+        // 0 file = null, 1 file = String, >1 files = JSON Array
+        if (count($media_urls) === 1) {
+            $final_media_url = $media_urls[0];
+        } elseif (count($media_urls) > 1) {
+            $final_media_url = json_encode($media_urls, JSON_UNESCAPED_SLASHES);
         }
     }
     // ==========================================
@@ -123,7 +163,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         // 4. WRITE TO LOCAL CORE MEMORY 
-        // Note: Sonar Pulses and ACK Receipts are ephemeral and DO NOT get saved to local transmissions
         if ($visibility !== 'sonar_pulse' && $visibility !== 'ack_receipt') {
             $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, target_planet, is_remote, author_alias, expiry_date, media_url) VALUES (:content, :visibility, :target, 0, :author, :expiry, :media)");
             $stmt->execute([
@@ -133,7 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':target' => $target_planet,
                 ':author' => $author_alias,
                 ':expiry' => $expiry_date,
-                ':media' => $media_url
+                ':media' => $final_media_url
             ]);
         }
         
@@ -145,7 +184,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             "from_planet" => $my_planet_url,
             "visibility" => $visibility,
             "expiry_date" => $expiry_date,
-            "media_url" => $media_url
+            "media_url" => $final_media_url
         ]);
 
         // --- [ TRANSMISSION ROUTING ] ---

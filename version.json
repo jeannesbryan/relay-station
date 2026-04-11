@@ -1,7 +1,7 @@
 {
-    "version": "5.4",
-    "codename": "Vocal Command",
+    "version": "5.5",
+    "codename": "Media Matrix",
     "status": "stable",
-    "changelog": "VOCAL COMMAND V5.4:\n- [COMMS] PTT Audio Logs: Integrated Push-To-Talk Walkie-Talkie feature for E2E Direct Messages and Public Timeline using MediaRecorder API.\n- [UI] Tactical Squelch: Added native Web Audio API white noise generator for realistic radio squelch effects.\n- [UI] Retro Audio Player: Redesigned audio attachments into interactive, retro-military playback buttons.",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v5.4/Relay-OTA-Update-v5.4.zip"
+    "changelog": "ADVANCED MEDIA MATRIX V5.5:\n- [UI] Grid Gallery: Support for attaching and seamlessly rendering up to 4 mixed media files (Images, Video, PTT Audio) in a dynamic 2x2 CSS grid.\n- [SYSTEM] JSON Payload: Transmitter now automatically handles multiple attachments, packaging them into a lightweight JSON array without requiring any database restructuring.\n- [FIX] Ciphertext Integrity: Removed HTML maxlength constraints that previously truncated large E2E encrypted payloads in Direct Messages, shifting validation entirely to the JS engine.",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v5.5/Relay-OTA-Update-v5.5.zip"
 }

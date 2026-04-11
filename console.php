@@ -195,14 +195,34 @@ try {
             $src = $msg['is_remote'] ? 'INCOMING FROM:' : 'LOCAL_AUTHOR:';
             $content = nl2br($msg['content']);
             
-            // 🎙️ MEDIA & PTT RENDERING ENGINE FOR PAGINATION
+            // 🗄️ V5.5 ADVANCED MEDIA MATRIX RENDERER (AJAX)
             $img = '';
             if (!empty($msg['media_url'])) {
-                $ext = strtolower(pathinfo($msg['media_url'], PATHINFO_EXTENSION));
-                if (in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4'])) {
-                    $img = '<div class="mt-3 text-center"><button type="button" class="t-btn warning t-btn-sm audio-play-btn" data-src="'.htmlspecialchars($msg['media_url']).'" style="font-size: 11px;">[ ▶️ PLAY AUDIO_LOG ]</button></div>';
+                $media_items = [];
+                if (strpos($msg['media_url'], '[') === 0) {
+                    $media_items = json_decode($msg['media_url'], true) ?? [];
                 } else {
-                    $img = '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" class="t-hologram-img" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>';
+                    $media_items = [$msg['media_url']];
+                }
+                
+                $m_count = count($media_items);
+                if ($m_count > 0) {
+                    $matrix_class = 'media-matrix-' . min($m_count, 4);
+                    $img = '<div class="media-matrix ' . $matrix_class . '">';
+                    foreach(array_slice($media_items, 0, 4) as $url) {
+                        $ext = strtolower(pathinfo($url, PATHINFO_EXTENSION));
+                        $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a']);
+                        $is_video = in_array($ext, ['mp4']);
+                        
+                        if ($is_audio) {
+                            $img .= '<div class="matrix-item audio-cell p-2"><button type="button" class="t-btn warning w-100 audio-play-btn" data-src="'.htmlspecialchars($url).'" style="font-size: 11px;">[ ▶️ PLAY AUDIO_LOG ]</button></div>';
+                        } elseif ($is_video) {
+                            $img .= '<div class="matrix-item"><video class="matrix-video" controls preload="metadata"><source src="'.htmlspecialchars($url).'" type="video/mp4"></video></div>';
+                        } else {
+                            $img .= '<div class="matrix-item"><img src="'.htmlspecialchars($url).'" class="matrix-img" alt="Secure Media"></div>';
+                        }
+                    }
+                    $img .= '</div>';
                 }
             }
             
@@ -252,10 +272,25 @@ try {
     <link rel="manifest" href="manifest.json">
     <style>
         #installAppBtn { display: none; }
-        .t-hologram-img { filter: grayscale(100%) sepia(100%) hue-rotate(80deg) brightness(0.7) contrast(1.2); transition: 0.3s ease-in-out; cursor: crosshair; }
-        .t-hologram-img:hover { filter: grayscale(0%) sepia(0%) hue-rotate(0deg) brightness(1) contrast(1); }
         /* PTT Button specific styling */
         #ptt-btn { user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+        
+        /* V5.5 THE MATRIX GRID */
+        .media-matrix { display: grid; gap: 8px; margin-top: 10px; }
+        .media-matrix-1 { grid-template-columns: 1fr; }
+        .media-matrix-2 { grid-template-columns: 1fr 1fr; }
+        .media-matrix-3 { grid-template-columns: 1fr 1fr; }
+        .media-matrix-3 .matrix-item:first-child { grid-column: span 2; }
+        .media-matrix-4 { grid-template-columns: 1fr 1fr; }
+        
+        .matrix-item { position: relative; overflow: hidden; border-radius: 4px; border: 1px dashed var(--t-green); background: var(--bg-base); aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; }
+        .matrix-item.audio-cell { aspect-ratio: auto; min-height: 50px; border-style: dotted; border-color: var(--t-yellow); }
+        
+        .matrix-img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(100%) sepia(100%) hue-rotate(80deg) brightness(0.7) contrast(1.2); transition: 0.3s; }
+        .matrix-img:hover { filter: none; }
+        
+        .matrix-video { width: 100%; height: 100%; object-fit: cover; filter: grayscale(100%) sepia(100%) hue-rotate(80deg) brightness(0.7) contrast(1.2); transition: 0.3s; }
+        .matrix-video:hover, .matrix-video:focus, .matrix-video:active { filter: none; outline: none; }
     </style>
 </head>
 <body class="t-crt">
@@ -292,10 +327,12 @@ try {
                     <form action="core/transmitter.php" method="POST" enctype="multipart/form-data" class="m-0" id="broadcast-form">
                         <input type="hidden" name="visibility" value="public">
                         <input type="hidden" name="media_base64" id="media-base64">
-                        <input type="hidden" name="audio_base64" id="audio-base64"> <textarea name="content" rows="3" class="t-textarea" placeholder="> What's happening in your sector?"></textarea>
+                        <input type="hidden" name="audio_base64" id="audio-base64">
+                        
+                        <textarea name="content" rows="3" class="t-textarea" placeholder="> What's happening in your sector?"></textarea>
 
                         <div class="mb-3 mt-2 d-flex align-items-center gap-2 flex-wrap">
-                            <input type="file" id="media-input" name="media" accept="image/*,audio/*" style="display: none;">
+                            <input type="file" id="media-input" name="media[]" accept="image/*,video/mp4,audio/*" multiple style="display: none;">
                             <button type="button" class="t-btn t-btn-sm" onclick="document.getElementById('media-input').click();" style="white-space: nowrap;">[ ATTACH_FILE ]</button>
                             <button type="button" class="t-btn danger t-btn-sm font-bold" id="ptt-btn" style="white-space: nowrap;" title="Hold to record broadcast">[ 🎙️ HOLD_TO_TALK ]</button>
                             <span id="file-name-display" class="fs-small text-muted" style="flex-grow:1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">> NO_MEDIA</span>
@@ -330,19 +367,42 @@ try {
                                 </p>
                                 
                                 <?php if(!empty($msg['media_url'])): 
-                                    $ext = strtolower(pathinfo($msg['media_url'], PATHINFO_EXTENSION));
-                                    $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4']);
+                                    $media_items = [];
+                                    if (strpos($msg['media_url'], '[') === 0) {
+                                        $media_items = json_decode($msg['media_url'], true) ?? [];
+                                    } else {
+                                        $media_items = [$msg['media_url']];
+                                    }
+                                    
+                                    $m_count = count($media_items);
+                                    if ($m_count > 0):
                                 ?>
-                                    <div class="mt-3 text-center">
-                                        <?php if($is_audio): ?>
-                                            <button type="button" class="t-btn warning t-btn-sm audio-play-btn" data-src="<?php echo htmlspecialchars($msg['media_url']); ?>" style="font-size: 11px;">
-                                                [ ▶️ PLAY AUDIO_LOG ]
-                                            </button>
-                                        <?php else: ?>
-                                            <img src="<?php echo htmlspecialchars($msg['media_url']); ?>" class="t-hologram-img" alt="Transmission Media" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;">
-                                        <?php endif; ?>
+                                    <div class="media-matrix media-matrix-<?php echo min($m_count, 4); ?>">
+                                        <?php foreach(array_slice($media_items, 0, 4) as $url): 
+                                            $ext = strtolower(pathinfo($url, PATHINFO_EXTENSION));
+                                            $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a']);
+                                            $is_video = in_array($ext, ['mp4']);
+                                        ?>
+                                            <?php if($is_audio): ?>
+                                                <div class="matrix-item audio-cell p-2">
+                                                    <button type="button" class="t-btn warning w-100 audio-play-btn" data-src="<?php echo htmlspecialchars($url); ?>" style="font-size: 11px;">
+                                                        [ ▶️ PLAY AUDIO_LOG ]
+                                                    </button>
+                                                </div>
+                                            <?php elseif($is_video): ?>
+                                                <div class="matrix-item">
+                                                    <video class="matrix-video" controls preload="metadata">
+                                                        <source src="<?php echo htmlspecialchars($url); ?>" type="video/mp4">
+                                                    </video>
+                                                </div>
+                                            <?php else: ?>
+                                                <div class="matrix-item">
+                                                    <img src="<?php echo htmlspecialchars($url); ?>" class="matrix-img" alt="Transmission Media">
+                                                </div>
+                                            <?php endif; ?>
+                                        <?php endforeach; ?>
                                     </div>
-                                <?php endif; ?>
+                                <?php endif; endif; ?>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -575,6 +635,8 @@ try {
         const fileDisplay = document.getElementById('file-name-display');
         const audioBase64Input = document.getElementById('audio-base64');
         const mediaInput = document.getElementById('media-input');
+        const mediaBase64Input = document.getElementById('media-base64');
+        const compStatus = document.getElementById('compress-status');
 
         async function startRecording() {
             if (isRecording) return;
@@ -591,8 +653,7 @@ try {
                     reader.readAsDataURL(audioBlob);
                     reader.onloadend = () => {
                         audioBase64Input.value = reader.result;
-                        mediaInput.value = ''; 
-                        fileDisplay.innerText = '> [ PTT_AUDIO_READY ]';
+                        fileDisplay.innerText = '> [ AUDIO_LOG_SAVED ]';
                         fileDisplay.className = 'fs-small text-warning font-bold t-blink';
                     };
                     stream.getTracks().forEach(track => track.stop()); 
@@ -631,13 +692,74 @@ try {
             pttBtn.addEventListener('touchend', stopRecording);
         }
 
+        // ==========================================
+        // 🗜️ [ V5.5 MULTI-MEDIA COMPRESSOR MATRIX ]
+        // ==========================================
         if (mediaInput) {
-            mediaInput.addEventListener('change', function(e) {
-                if(e.target.files.length > 0) {
-                    audioBase64Input.value = ''; 
-                    fileDisplay.innerText = '> ' + e.target.files[0].name;
-                    fileDisplay.className = 'fs-small text-muted';
+            mediaInput.addEventListener('change', async function(e) {
+                const files = e.target.files;
+                if(files.length === 0) {
+                    fileDisplay.innerText = '> NO_MEDIA';
+                    compStatus.innerText = '';
+                    mediaBase64Input.value = '';
+                    return;
                 }
+                
+                if(files.length > 4) {
+                    Terminal.toast('[!] MAX 4 FILES ALLOWED', 'warning');
+                }
+                
+                const processCount = Math.min(files.length, 4);
+                if (processCount === 1) {
+                    fileDisplay.innerText = '> ' + files[0].name;
+                } else {
+                    fileDisplay.innerText = '> [ ' + processCount + ' MEDIA ATTACHED ]';
+                }
+                fileDisplay.className = 'fs-small text-success font-bold';
+                compStatus.innerText = '[ PROCESSING... ]';
+                
+                let processedBase64Array = [];
+                
+                for(let i=0; i < processCount; i++) {
+                    const file = files[i];
+                    
+                    if(file.type.startsWith('video/') || file.type.startsWith('audio/')) {
+                        continue; 
+                    }
+                    
+                    if(file.type.startsWith('image/')) {
+                        const b64 = await compressImage(file);
+                        processedBase64Array.push(b64);
+                    }
+                }
+                
+                if (processedBase64Array.length > 0) {
+                    mediaBase64Input.value = JSON.stringify(processedBase64Array);
+                    compStatus.innerText = '[ WEBP COMPRESSED ]';
+                } else {
+                    mediaBase64Input.value = '';
+                    compStatus.innerText = '[ RAW MEDIA QUEUED ]';
+                }
+            });
+        }
+
+        function compressImage(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width; let height = img.height;
+                        if(width > 1080) { height = Math.round(height * 1080 / width); width = 1080; } 
+                        canvas.width = width; canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/webp', 0.8));
+                    }
+                    img.src = event.target.result;
+                }
+                reader.readAsDataURL(file);
             });
         }
 
@@ -831,7 +953,6 @@ try {
                 const audioInput = document.getElementById('audio-base64');
                 const mediaInp = document.getElementById('media-input');
                 
-                // Failsafe: Prevent empty payload error if sending Audio/Media only
                 if (contentInput.value.trim() === '' && (audioInput.value !== '' || mediaInp.files.length > 0)) {
                     contentInput.value = '[ 🎙️ SECURE_MEDIA_TRANSMISSION ]';
                 } else if (contentInput.value.trim() === '') {

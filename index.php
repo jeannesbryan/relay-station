@@ -50,13 +50,33 @@ try {
             $author = htmlspecialchars($msg['author_alias'] ?? 'LOCAL_COMMAND');
             $img = '';
             
-            // 🎙️ MEDIA & PTT RENDERING ENGINE
+            // 🗄️ V5.5 ADVANCED MEDIA MATRIX RENDERER (AJAX)
             if (!empty($msg['media_url'])) {
-                $ext = strtolower(pathinfo($msg['media_url'], PATHINFO_EXTENSION));
-                if (in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4'])) {
-                    $img = '<div class="mt-3 text-center"><button type="button" class="t-btn warning t-btn-sm audio-play-btn" data-src="'.htmlspecialchars($msg['media_url']).'" style="font-size: 11px;">[ ▶️ PLAY AUDIO_LOG ]</button></div>';
+                $media_items = [];
+                if (strpos($msg['media_url'], '[') === 0) {
+                    $media_items = json_decode($msg['media_url'], true) ?? [];
                 } else {
-                    $img = '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" class="t-hologram-img" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>';
+                    $media_items = [$msg['media_url']];
+                }
+                
+                $m_count = count($media_items);
+                if ($m_count > 0) {
+                    $matrix_class = 'media-matrix-' . min($m_count, 4);
+                    $img = '<div class="media-matrix ' . $matrix_class . '">';
+                    foreach(array_slice($media_items, 0, 4) as $url) {
+                        $ext = strtolower(pathinfo($url, PATHINFO_EXTENSION));
+                        $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a']);
+                        $is_video = in_array($ext, ['mp4']);
+                        
+                        if ($is_audio) {
+                            $img .= '<div class="matrix-item audio-cell p-2"><button type="button" class="t-btn warning w-100 audio-play-btn" data-src="'.htmlspecialchars($url).'" style="font-size: 11px;">[ ▶️ PLAY AUDIO_LOG ]</button></div>';
+                        } elseif ($is_video) {
+                            $img .= '<div class="matrix-item"><video class="matrix-video" controls preload="metadata"><source src="'.htmlspecialchars($url).'" type="video/mp4"></video></div>';
+                        } else {
+                            $img .= '<div class="matrix-item"><img src="'.htmlspecialchars($url).'" class="matrix-img" alt="Secure Media"></div>';
+                        }
+                    }
+                    $img .= '</div>';
                 }
             }
             
@@ -93,8 +113,24 @@ try {
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.css">
     <style>
-        .t-hologram-img { filter: grayscale(100%) sepia(100%) hue-rotate(80deg) brightness(0.7) contrast(1.2); }
         .bunker-seal { min-height: 60vh; display: flex; flex-direction: column; justify-content: center; align-items: center; border: 2px dashed var(--t-red); background: rgba(255,0,65,0.05); }
+        
+        /* V5.5 THE MATRIX GRID */
+        .media-matrix { display: grid; gap: 8px; margin-top: 10px; }
+        .media-matrix-1 { grid-template-columns: 1fr; }
+        .media-matrix-2 { grid-template-columns: 1fr 1fr; }
+        .media-matrix-3 { grid-template-columns: 1fr 1fr; }
+        .media-matrix-3 .matrix-item:first-child { grid-column: span 2; }
+        .media-matrix-4 { grid-template-columns: 1fr 1fr; }
+        
+        .matrix-item { position: relative; overflow: hidden; border-radius: 4px; border: 1px dashed var(--t-green); background: var(--bg-base); aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; }
+        .matrix-item.audio-cell { aspect-ratio: auto; min-height: 50px; border-style: dotted; border-color: var(--t-yellow); }
+        
+        .matrix-img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(100%) sepia(100%) hue-rotate(80deg) brightness(0.7) contrast(1.2); transition: 0.3s; }
+        .matrix-img:hover { filter: none; }
+        
+        .matrix-video { width: 100%; height: 100%; object-fit: cover; filter: grayscale(100%) sepia(100%) hue-rotate(80deg) brightness(0.7) contrast(1.2); transition: 0.3s; }
+        .matrix-video:hover, .matrix-video:focus, .matrix-video:active { filter: none; outline: none; }
     </style>
 </head>
 <body class="t-crt">
@@ -143,19 +179,42 @@ try {
                                     </p>
                                     
                                     <?php if(!empty($msg['media_url'])): 
-                                        $ext = strtolower(pathinfo($msg['media_url'], PATHINFO_EXTENSION));
-                                        $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4']);
+                                        $media_items = [];
+                                        if (strpos($msg['media_url'], '[') === 0) {
+                                            $media_items = json_decode($msg['media_url'], true) ?? [];
+                                        } else {
+                                            $media_items = [$msg['media_url']];
+                                        }
+                                        
+                                        $m_count = count($media_items);
+                                        if ($m_count > 0):
                                     ?>
-                                        <div class="mt-3 text-center">
-                                            <?php if($is_audio): ?>
-                                                <button type="button" class="t-btn warning t-btn-sm audio-play-btn" data-src="<?php echo htmlspecialchars($msg['media_url']); ?>" style="font-size: 11px;">
-                                                    [ ▶️ PLAY AUDIO_LOG ]
-                                                </button>
-                                            <?php else: ?>
-                                                <img src="<?php echo htmlspecialchars($msg['media_url']); ?>" class="t-hologram-img" alt="Transmission" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;">
-                                            <?php endif; ?>
+                                        <div class="media-matrix media-matrix-<?php echo min($m_count, 4); ?>">
+                                            <?php foreach(array_slice($media_items, 0, 4) as $url): 
+                                                $ext = strtolower(pathinfo($url, PATHINFO_EXTENSION));
+                                                $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a']);
+                                                $is_video = in_array($ext, ['mp4']);
+                                            ?>
+                                                <?php if($is_audio): ?>
+                                                    <div class="matrix-item audio-cell p-2">
+                                                        <button type="button" class="t-btn warning w-100 audio-play-btn" data-src="<?php echo htmlspecialchars($url); ?>" style="font-size: 11px;">
+                                                            [ ▶️ PLAY AUDIO_LOG ]
+                                                        </button>
+                                                    </div>
+                                                <?php elseif($is_video): ?>
+                                                    <div class="matrix-item">
+                                                        <video class="matrix-video" controls preload="metadata">
+                                                            <source src="<?php echo htmlspecialchars($url); ?>" type="video/mp4">
+                                                        </video>
+                                                    </div>
+                                                <?php else: ?>
+                                                    <div class="matrix-item">
+                                                        <img src="<?php echo htmlspecialchars($url); ?>" class="matrix-img" alt="Transmission Media">
+                                                    </div>
+                                                <?php endif; ?>
+                                            <?php endforeach; ?>
                                         </div>
-                                    <?php endif; ?>
+                                    <?php endif; endif; ?>
                                 </div>
                             <?php endforeach; ?>
                         <?php endif; ?>
