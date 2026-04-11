@@ -34,6 +34,13 @@ try {
     $query_stars = $db->query("SELECT * FROM following ORDER BY added_at DESC");
     $star_chart = $query_stars->fetchAll(PDO::FETCH_ASSOC);
 
+    // 🔑 [ V5.6 KEY VAULT PRE-FETCH ]
+    $stmt_key = $db->query("SELECT config_value FROM system_config WHERE config_key = 'encrypted_privkey' ORDER BY rowid DESC LIMIT 1");
+    $encrypted_privkey = $stmt_key ? $stmt_key->fetchColumn() : null;
+
+    $stmt_pub = $db->query("SELECT config_value FROM system_config WHERE config_key = 'public_key' ORDER BY rowid DESC LIMIT 1");
+    $server_pubkey = $stmt_pub ? $stmt_pub->fetchColumn() : null;
+
     // ==========================================
     // 🛠️ [ AWARENESS FOLDER PATH GROUPING ]
     // ==========================================
@@ -78,7 +85,7 @@ try {
         #chat-container::-webkit-scrollbar-track { background: var(--t-black); border-left: 1px dashed var(--t-green-dim); }
         #chat-container::-webkit-scrollbar-thumb { background: var(--t-green-dim); }
         
-        /* PTT Button specific styling to prevent text selection while holding */
+        /* PTT Button specific styling */
         #ptt-btn { user-select: none; -webkit-user-select: none; touch-action: manipulation; }
 
         /* V5.5 THE MATRIX GRID */
@@ -107,9 +114,21 @@ try {
         </div>
     </div>
 
+    <div id="vault-modal" class="t-splash" style="display:none; z-index: 2000; background: rgba(0,0,0,0.9); flex-direction: column; justify-content: center; align-items: center;">
+        <div class="t-card warning" style="width: 90%; max-width: 400px; border-color: var(--t-yellow);">
+            <div class="t-card-header text-warning font-bold">> 🔐 IDENTITY VAULT DETECTED</div>
+            <div class="p-3 text-center">
+                <p class="fs-small text-muted mb-3">> This device is missing your Private Key. Enter your Master Passcode to securely decrypt and sync your identity from the server.</p>
+                <input type="password" id="vault-passcode" class="t-input text-center font-bold mb-3" placeholder="MASTER PASSCODE">
+                <button onclick="triggerVaultUnlock()" class="t-btn warning w-100 font-bold t-glow">[ UNLOCK IDENTITY ]</button>
+                <button onclick="document.getElementById('vault-modal').style.display='none'" class="t-btn mt-2 w-100" style="padding:4px;">[ LATER ]</button>
+            </div>
+        </div>
+    </div>
+
     <div class="t-container-fluid mt-4">
         <nav class="t-navbar mb-4">
-            <div class="t-nav-brand"><span class="t-led-dot t-led-green t-blink"></span></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">> SECURE_COMMS (E2E) v5.5</span></div>
+            <div class="t-nav-brand"><span class="t-led-dot t-led-green t-blink"></span></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">> SECURE_COMMS (E2E) v5.6</span></div>
             <div class="t-nav-menu">
                 <a href="console.php" class="t-btn t-btn-sm">[ RETURN_TO_TIMELINE ]</a>
             </div>
@@ -149,26 +168,29 @@ try {
                             
                             <h3 class="text-warning mb-4 t-border-bottom pb-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
                                 <span>> LINK ESTABLISHED: <?php echo htmlspecialchars($domain); ?> <span class="fs-small t-blink">[ 🔐 E2E SECURED ]</span></span>
-                                <button onclick="purgeRoom('<?php echo htmlspecialchars($domain); ?>')" class="t-btn danger t-btn-sm" style="padding: 2px 8px; font-size: 11px;" title="Purge Local Records">[ 🗑️ PURGE_LINK ]</button>
+                                <button onclick="purgeRoom('<?php echo htmlspecialchars($domain); ?>')" class="t-btn danger t-btn-sm font-bold" style="padding: 2px 8px; font-size: 11px;" title="Wipe Local & Remote Logs">[ 🔥 SCORCHED_EARTH ]</button>
                             </h3>
                             
                             <?php foreach ($thread as $msg): 
                                 $is_me = ($msg['is_remote'] == 0);
                                 $status = $msg['status'] ?? 'sent';
+                                $alias_display = $is_me ? 'LOCAL_COMMAND' : htmlspecialchars($msg['author_alias']);
                             ?>
                                 <div class="mb-3 d-flex flex-column <?php echo $is_me ? 'align-items-end' : 'align-items-start'; ?>">
-                                    <div class="fs-small text-muted mb-1">
-                                        <?php echo $is_me ? 'LOCAL_COMMAND' : htmlspecialchars($msg['author_alias']); ?> 
-                                        [<?php echo date('H:i', strtotime($msg['timestamp'])); ?>] 🔐
-                                        <?php if(!empty($msg['expiry_date'])) echo '<span class="text-danger t-flicker"> [👻]</span>'; ?>
-                                        
-                                        <?php if ($is_me): ?>
-                                            <?php if ($status === 'read'): ?>
-                                                <span class="ml-1 font-bold" style="color: #00ffff; text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);">[ READ ]</span>
-                                            <?php else: ?>
-                                                <span class="text-warning ml-1">[ SENT ]</span>
+                                    <div class="fs-small text-muted mb-1 d-flex align-items-center gap-2">
+                                        <span>
+                                            <?php echo $alias_display; ?> [<?php echo date('H:i', strtotime($msg['timestamp'])); ?>] 🔐
+                                            <?php if(!empty($msg['expiry_date'])) echo '<span class="text-danger t-flicker"> [👻]</span>'; ?>
+                                            
+                                            <?php if ($is_me): ?>
+                                                <?php if ($status === 'read'): ?>
+                                                    <span class="ml-1 font-bold" style="color: #00ffff; text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);">[ READ ]</span>
+                                                <?php else: ?>
+                                                    <span class="text-warning ml-1">[ SENT ]</span>
+                                                <?php endif; ?>
                                             <?php endif; ?>
-                                        <?php endif; ?>
+                                        </span>
+                                        <button type="button" onclick="quoteMessage(this, '<?php echo $alias_display; ?>')" class="t-btn t-btn-sm" style="padding: 1px 5px; font-size: 9px; line-height: 1; border-color: var(--t-green-dim); color: var(--t-green-dim);">[ 💬 QUOTE ]</button>
                                     </div>
                                     <div class="p-2 px-3" style="
                                         max-width: 80%; width: 100%;
@@ -181,7 +203,6 @@ try {
                                         </p>
                                         
                                         <?php if(!empty($msg['media_url'])): 
-                                            // Check if JSON Array (V5.5) or Single String (Legacy)
                                             $media_items = [];
                                             if (strpos($msg['media_url'], '[') === 0) {
                                                 $media_items = json_decode($msg['media_url'], true) ?? [];
@@ -262,6 +283,88 @@ try {
     <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
         // ==========================================
+        // 💬 [ V5.6 TACTICAL QUOTE ENGINE ]
+        // ==========================================
+        function quoteMessage(btn, author) {
+            const container = btn.closest('.d-flex.flex-column');
+            const msgElement = container.querySelector('.e2e-msg');
+            const hasMedia = container.querySelector('.media-matrix') || container.querySelector('.audio-play-btn') || container.querySelector('.matrix-img') ? true : false;
+            
+            let originalText = msgElement.innerText.trim();
+            if (originalText.includes('DECRYPTING') || msgElement.getAttribute('data-cipher') === originalText) {
+                Terminal.toast('[!] CANNOT QUOTE ENCRYPTED TEXT', 'warning');
+                return;
+            }
+
+            let quoteBlock = `> [ TRANSMISI DARI: ${author} ]\n`;
+            if (originalText.length > 0) {
+                const lines = originalText.split('\n').map(line => `> ${line}`);
+                quoteBlock += lines.join('\n') + '\n';
+            }
+            if (hasMedia) {
+                quoteBlock += `> [ 📎 MEDIA_ATTACHED ]\n`;
+            }
+            
+            const input = document.getElementById('content-input');
+            input.value = quoteBlock + '\n' + input.value;
+            input.focus();
+            
+            // Update UI Enforcer
+            if (input.value.length > 180) {
+                input.value = input.value.substring(0, 180); 
+            }
+            document.getElementById('char-counter').innerText = input.value.length + ' / 180 Bytes';
+            document.getElementById('reply-form').style.display = 'block';
+        }
+
+        // ==========================================
+        // 🔐 [ V5.6 THE ENCRYPTED KEY VAULT (DECRYPTOR) ]
+        // ==========================================
+        async function triggerVaultUnlock() {
+            const passcode = document.getElementById('vault-passcode').value;
+            if(!passcode) return;
+            
+            const vaultData = "<?php echo $encrypted_privkey ?? ''; ?>";
+            const pubKey = "<?php echo $server_pubkey ?? ''; ?>";
+            if (!vaultData) return;
+
+            document.getElementById('vault-passcode').disabled = true;
+            document.getElementById('vault-passcode').placeholder = "DECRYPTING VAULT...";
+
+            try {
+                const parts = vaultData.split(':');
+                const salt = Uint8Array.from(atob(parts[0]), c => c.charCodeAt(0));
+                const iv = Uint8Array.from(atob(parts[1]), c => c.charCodeAt(0));
+                const cipher = Uint8Array.from(atob(parts[2]), c => c.charCodeAt(0));
+
+                const enc = new TextEncoder();
+                const keyMaterial = await window.crypto.subtle.importKey(
+                    "raw", enc.encode(passcode), {name: "PBKDF2"}, false, ["deriveKey"]
+                );
+                
+                const key = await window.crypto.subtle.deriveKey(
+                    {name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256"},
+                    keyMaterial, {name: "AES-GCM", length: 256}, false, ["decrypt"]
+                );
+
+                const decrypted = await window.crypto.subtle.decrypt({name: "AES-GCM", iv: iv}, key, cipher);
+                const privPem = new TextDecoder().decode(decrypted);
+
+                localStorage.setItem('relay_privkey', privPem);
+                localStorage.setItem('relay_pubkey', pubKey);
+
+                document.getElementById('vault-modal').style.display='none';
+                Terminal.toast('[✓] IDENTITY SYNCED SUCCESSFULLY', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } catch (e) {
+                document.getElementById('vault-passcode').disabled = false;
+                document.getElementById('vault-passcode').value = '';
+                document.getElementById('vault-passcode').placeholder = "MASTER PASSCODE";
+                Terminal.toast('[!] INVALID PASSCODE OR CORRUPTED VAULT', 'danger');
+            }
+        }
+
+        // ==========================================
         // 🛡️ [ BUG FIX: JS-LEVEL MAXLENGTH ENFORCER ]
         // ==========================================
         document.getElementById('content-input').addEventListener('input', function() {
@@ -272,7 +375,7 @@ try {
         });
 
         // ==========================================
-        // 🎙️ [ TACTICAL SQUELCH GENERATOR (Web Audio API) ]
+        // 🎙️ [ TACTICAL SQUELCH & PTT ENGINE ]
         // ==========================================
         let audioCtx;
         function getAudioCtx() {
@@ -283,7 +386,7 @@ try {
 
         function playSquelch(type) {
             const ctx = getAudioCtx();
-            const duration = 0.15; // 150ms of static
+            const duration = 0.15; 
             
             const bufferSize = ctx.sampleRate * duration; 
             const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
@@ -321,9 +424,6 @@ try {
             osc.stop(ctx.currentTime + duration);
         }
 
-        // ==========================================
-        // 🎙️ [ THE PUSH-TO-TALK ENGINE (MediaRecorder) ]
-        // ==========================================
         let mediaRecorder;
         let audioChunks = [];
         let isRecording = false;
@@ -350,7 +450,6 @@ try {
                     reader.readAsDataURL(audioBlob);
                     reader.onloadend = () => {
                         audioBase64Input.value = reader.result;
-                        // Note: Don't clear mediaInput if they want to mix PTT + Images
                         fileDisplay.innerText = '> [ AUDIO_LOG_SAVED ]';
                         fileDisplay.className = 'fs-small text-warning font-bold t-blink';
                     };
@@ -389,7 +488,7 @@ try {
         pttBtn.addEventListener('touchend', stopRecording);
 
         // ==========================================
-        // 🗜️ [ V5.5 MULTI-MEDIA COMPRESSOR MATRIX ]
+        // 🗜️ [ MULTI-MEDIA COMPRESSOR MATRIX ]
         // ==========================================
         mediaInput.addEventListener('change', async function(e) {
             const files = e.target.files;
@@ -400,7 +499,6 @@ try {
                 return;
             }
             
-            // UI Feedback
             if(files.length > 4) {
                 Terminal.toast('[!] MAX 4 FILES ALLOWED', 'warning');
             }
@@ -416,34 +514,24 @@ try {
             
             let processedBase64Array = [];
             
-            // Loop through selected files
             for(let i=0; i < processCount; i++) {
                 const file = files[i];
-                
-                // If Video or Audio, don't compress via Canvas, just pass it to fallback
-                if(file.type.startsWith('video/') || file.type.startsWith('audio/')) {
-                    continue; 
-                }
-                
-                // If Image, compress to WebP
+                if(file.type.startsWith('video/') || file.type.startsWith('audio/')) { continue; }
                 if(file.type.startsWith('image/')) {
                     const b64 = await compressImage(file);
                     processedBase64Array.push(b64);
                 }
             }
             
-            // If we successfully compressed images, pack them into JSON
             if (processedBase64Array.length > 0) {
                 mediaBase64Input.value = JSON.stringify(processedBase64Array);
                 compStatus.innerText = '[ WEBP COMPRESSED ]';
             } else {
-                // If all files were videos/audio, empty the Base64 input so fallback kicks in
                 mediaBase64Input.value = '';
                 compStatus.innerText = '[ RAW MEDIA QUEUED ]';
             }
         });
 
-        // Helper function to compress single image
         function compressImage(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
@@ -512,22 +600,36 @@ try {
         });
 
         // ==========================================
-        // 🗑️ [ ROOM PURGE PROTOCOL ]
+        // 🔥 [ V5.6 THE SCORCHED EARTH PROTOCOL ]
         // ==========================================
         async function purgeRoom(domain) {
-            if (confirm('> WARNING: This will permanently delete all local records of this communication link. Continue?')) {
-                Terminal.splash.show('> PURGING_LOCAL_RECORDS...');
+            if (confirm('> THE SCORCHED EARTH PROTOCOL\n\nWARNING: This will permanently delete all local records of this link AND send a destructive payload to wipe the target node\'s records.\n\nExecute?')) {
+                
+                document.getElementById('splash-overlay').style.display = 'flex';
+                document.getElementById('splash-text').innerText = '> INITIATING SCORCHED_EARTH...';
+
+                // 1. Fire Scorched Earth to target node
+                const fireData = new FormData();
+                fireData.append('visibility', 'scorched_earth');
+                fireData.append('target_planet', 'https://' + domain);
+                fireData.append('content', 'PURGE'); 
+                
+                try {
+                    await fetch('core/transmitter.php', { method: 'POST', body: fireData });
+                } catch(e) { console.log('> Scorched earth dispatch failed'); }
+
+                // 2. Purge Local Memory
                 const formData = new FormData();
                 formData.append('action', 'purge_room');
                 formData.append('target_domain', domain);
                 
                 try {
                     await fetch('direct.php', { method: 'POST', body: formData });
-                    Terminal.toast('[✓] LINK PURGED SUCCESSFULLY', 'success');
+                    Terminal.toast('[✓] SCORCHED EARTH EXECUTED', 'success');
                     setTimeout(() => location.reload(), 1000);
                 } catch(err) {
-                    Terminal.splash.hide();
-                    Terminal.toast('[!] PURGE FAILED', 'danger');
+                    document.getElementById('splash-overlay').style.display = 'none';
+                    Terminal.toast('[!] LOCAL PURGE FAILED', 'danger');
                 }
             }
         }
@@ -536,11 +638,19 @@ try {
         // 🔐 THE DECRYPTOR (Read E2E Messages)
         // ==========================================
         window.addEventListener('DOMContentLoaded', async () => {
+            const serverEncPriv = "<?php echo $encrypted_privkey ?? ''; ?>";
             const privPem = localStorage.getItem('relay_privkey');
-            if(!privPem) return;
+            
+            if (!privPem) {
+                if (serverEncPriv) {
+                    document.getElementById('vault-modal').style.display = 'flex';
+                }
+                return;
+            }
 
             try {
-                const binStr = window.atob(privPem);
+                const cleanPrivPem = privPem.replace(/[\r\n\s]/g, '');
+                const binStr = window.atob(cleanPrivPem);
                 const bytes = new Uint8Array(binStr.length);
                 for (let i = 0; i < binStr.length; i++) { bytes[i] = binStr.charCodeAt(i); }
                 
@@ -553,9 +663,10 @@ try {
                 
                 for(let msg of msgs) {
                     const cipherText = msg.getAttribute('data-cipher');
-                    if (cipherText.length > 200 && /^[A-Za-z0-9+/=]+$/.test(cipherText)) {
+                    if (cipherText.length > 200 && /^[A-Za-z0-9+/=\s]+$/.test(cipherText)) {
                         try {
-                            const cBinStr = window.atob(cipherText);
+                            const cleanCipher = cipherText.replace(/[\r\n\s]/g, '');
+                            const cBinStr = window.atob(cleanCipher);
                             const cBytes = new Uint8Array(cBinStr.length);
                             for (let i = 0; i < cBinStr.length; i++) { cBytes[i] = cBinStr.charCodeAt(i); }
                             
@@ -581,44 +692,48 @@ try {
         const replyForm = document.getElementById('reply-form');
         replyForm.addEventListener('submit', async function(e) {
             e.preventDefault();
-            Terminal.splash.show('> ESTABLISHING QUANTUM LINK...');
+            
+            const splashEl = document.getElementById('splash-overlay');
+            const splashText = document.getElementById('splash-text');
+            splashEl.style.display = 'flex';
+            splashText.innerHTML = '> ESTABLISHING QUANTUM LINK...<span class="t-loading-dots"></span>';
 
             const targetUrl = document.getElementById('target-input').value.replace(/\/$/, '');
             let rawContent = document.getElementById('content-input').value;
             const localPem = localStorage.getItem('relay_pubkey');
             
-            // Failsafe: Prevent empty payload error if sending Audio/Media only
             if (rawContent.trim() === '' && (document.getElementById('audio-base64').value !== '' || document.getElementById('media-input').files.length > 0)) {
                 rawContent = '[ 🎙️ SECURE_MEDIA_TRANSMISSION ]';
             } else if (rawContent.trim() === '') {
-                Terminal.splash.hide();
+                splashEl.style.display = 'none';
                 Terminal.toast('[!] TRANSMISSION CANNOT BE EMPTY', 'danger');
                 return;
             }
             
-            // 🛡️ [ BUG FIX: Final 180 chars validation before encryption ]
             if (rawContent.length > 180) {
-                Terminal.splash.hide();
+                splashEl.style.display = 'none';
                 Terminal.toast('[!] PAYLOAD EXCEEDS 180 BYTES', 'danger');
                 return;
             }
 
             try {
-                if(!localPem) throw new Error("Local Public Key is missing! Open Main Console to generate one.");
+                if(!localPem) throw new Error("Local Public Key is missing! Sync your Identity Vault first.");
 
-                Terminal.splash.show('> PINGING TARGET HANDSHAKE...');
+                splashText.innerHTML = '> PINGING TARGET HANDSHAKE...<span class="t-loading-dots"></span>';
+                
                 const pingRes = await fetch(targetUrl + '/api_ping.php');
-                if(!pingRes.ok) throw new Error("Target node is unreachable or offline.");
+                if(!pingRes.ok) throw new Error("Target node API ditolak / CORS Error (HTTP " + pingRes.status + ")");
                 const pingData = await pingRes.json();
                 
                 if(!pingData.public_key) {
                     throw new Error("Target node does not support E2E Encryption (Missing Public Key).");
                 }
 
-                Terminal.splash.show('> ENCRYPTING PAYLOADS...');
+                splashText.innerHTML = '> ENCRYPTING PAYLOADS...<span class="t-loading-dots"></span>';
                 
                 async function importPubKey(pem) {
-                    const binStr = window.atob(pem);
+                    const cleanPem = pem.replace(/[\r\n\s]/g, '');
+                    const binStr = window.atob(cleanPem);
                     const bytes = new Uint8Array(binStr.length);
                     for (let i = 0; i < binStr.length; i++) { bytes[i] = binStr.charCodeAt(i); }
                     return await window.crypto.subtle.importKey("spki", bytes.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
@@ -641,7 +756,7 @@ try {
 
             } catch(err) {
                 console.error(err);
-                Terminal.splash.hide();
+                splashEl.style.display = 'none';
                 Terminal.toast(err.message, 'danger');
             }
         });

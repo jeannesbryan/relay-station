@@ -1,13 +1,7 @@
 <?php
-require_once 'core/ssl_shield.php';
-// ==========================================
-// 📡 RELAY STATION: IDENTIFICATION BEACON
-// ==========================================
-// Responds to "Ping" signals from foreign stations to prove node validity and capabilities.
-
-// 🛡️ [ BUG FIX 2 ]: BULLETPROOF CORS (Mencegah stuck di Pinging Target Handshake)
+// 🛡️ [ BUG FIX 3 ]: MEMINDAHKAN CORS KE PUNCAK (Anti CORS-Error tersembunyi)
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, OPTIONS');
+header('Access-Control-Allow-Methods: GET, OPTIONS, POST');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 
 // Jika browser mengirimkan request preflight (OPTIONS), langsung beri lampu hijau dan tutup koneksi
@@ -15,6 +9,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
+
+// 🛡️ SECURITY OVERRIDE: Sekarang panggil pelindung SSL setelah CORS aman.
+require_once 'core/ssl_shield.php';
+
+// ==========================================
+// 📡 RELAY STATION: IDENTIFICATION BEACON
+// ==========================================
+// Responds to "Ping" signals from foreign stations to prove node validity and capabilities.
 
 // 🛡️ [ BUG FIX 1 ]: ANTI-CACHE HEADERS (Mencegah Key Mismatch / Teks Enkripsi Gagal Decode)
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');

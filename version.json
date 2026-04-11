@@ -1,7 +1,7 @@
 {
-    "version": "5.5",
-    "codename": "Media Matrix",
+    "version": "5.6",
+    "codename": "Scorched Earth",
     "status": "stable",
-    "changelog": "ADVANCED MEDIA MATRIX V5.5:\n- [UI] Grid Gallery: Support for attaching and seamlessly rendering up to 4 mixed media files (Images, Video, PTT Audio) in a dynamic 2x2 CSS grid.\n- [SYSTEM] JSON Payload: Transmitter now automatically handles multiple attachments, packaging them into a lightweight JSON array without requiring any database restructuring.\n- [FIX] Ciphertext Integrity: Removed HTML maxlength constraints that previously truncated large E2E encrypted payloads in Direct Messages, shifting validation entirely to the JS engine.",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v5.5/Relay-OTA-Update-v5.5.zip"
+    "changelog": "THE FINAL V5 RELEASE (v5.6):\n- [SECURITY] The Encrypted Key Vault: Multi-device E2E synchronization using AES-GCM. Private keys are securely locked with the Master Passcode on the server.\n- [SYSTEM] Scorched Earth Protocol: Send a silent missile to permanently wipe Direct Message history on both local and target remote nodes simultaneously.\n- [SYSTEM] Global Purge: Completely erase a specific public broadcast from the local timeline and automatically wipe it from all allied Star Chart nodes.\n- [UI] Tactical Quote: Securely quote incoming text messages in both Public and Direct channels without breaking media references.\n- [FIX] API Gateway: Fixed a fatal CORS preflight execution order in `api_ping.php` and removed aggressive string sanitization in `api_inbox.php` that previously destroyed JSON Grid Gallery arrays.",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v5.6/Relay-OTA-Update-v5.6.zip"
 }

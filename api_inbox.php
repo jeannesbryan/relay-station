@@ -1,9 +1,9 @@
 <?php
 require_once 'core/ssl_shield.php';
 // ==========================================
-// 📡 RELAY STATION: ATMOSPHERIC SHIELD & INBOX
+// 📡 RELAY STATION: ATMOSPHERIC SHIELD & INBOX (v5.6)
 // Endpoint to receive incoming signals (POST) from foreign nodes. 
-// Equipped with Anti-Spam and Anti-Spoofing Firewalls.
+// Equipped with Anti-Spam, Anti-Spoofing, and Scorched Earth Firewalls.
 // ==========================================
 
 header('Content-Type: application/json');
@@ -84,8 +84,8 @@ try {
             echo json_encode(['status' => 'error', 'message' => '[ RATE LIMIT ] Max 5 transmissions per minute. Delay your broadcast.']);
             exit;
         }
-    } elseif ($visibility !== 'ack_receipt') { 
-        // Note: 'ack_receipt' bypasses rate limiting so bulk message reading doesn't get blocked
+    } elseif ($visibility !== 'ack_receipt' && $visibility !== 'scorched_earth' && $visibility !== 'global_purge') { 
+        // Note: System signals bypass rate limiting so bulk actions don't get blocked
         $stmt_rl = $db->prepare("SELECT COUNT(*) FROM transmissions WHERE sender_ip = :ip AND timestamp >= datetime('now', '-1 minute')");
         $stmt_rl->execute([':ip' => $sender_ip]);
         if ($stmt_rl->fetchColumn() >= 5) {
@@ -115,9 +115,22 @@ try {
         
     } elseif ($visibility === 'ack_receipt') {
         // 📩 [ ACK PROTOCOL ] Change local outbox status to READ (Centang Biru)
-        // Jika stasiun B mengirim ACK, kita ubah SEMUA pesan (yg kita kirim ke B) dari 'sent' menjadi 'read'
         $stmt_ack = $db->prepare("UPDATE transmissions SET status = 'read' WHERE visibility = 'direct' AND is_remote = 0 AND target_planet = :url AND status = 'sent'");
         $stmt_ack->execute([':url' => $normalized_from]);
+        
+    } elseif ($visibility === 'scorched_earth') {
+        // 🔥 [ V5.6: SCORCHED EARTH PROTOCOL ] Destroy all DMs involving this sender
+        $like_author = '%' . $domain_host . '%';
+        $stmt_scorch = $db->prepare("DELETE FROM transmissions WHERE visibility = 'direct' AND (author_alias LIKE :a1 OR target_planet LIKE :a2)");
+        $stmt_scorch->execute([':a1' => $like_author, ':a2' => $like_author]);
+        
+    } elseif ($visibility === 'global_purge') {
+        // 🔥 [ V5.6: GLOBAL PURGE PROTOCOL ] Destroy a specific public post by this sender matching the content
+        $stmt_purge = $db->prepare("DELETE FROM transmissions WHERE visibility = 'public' AND author_alias = :author AND content = :content");
+        $stmt_purge->execute([
+            ':author' => $formatted_author,
+            ':content' => htmlspecialchars($content) // Match exactly the escaped version in the database
+        ]);
         
     } else {
         // 📩 [ STANDARD TRANSMISSION ] Save to main chat logs
@@ -127,7 +140,8 @@ try {
             ':visibility' => htmlspecialchars($visibility),
             ':author' => $formatted_author,
             ':expiry' => $expiry_date ? htmlspecialchars($expiry_date) : null,
-            ':media_url' => $media_url ? htmlspecialchars($media_url) : null,
+            // 🛡️ [ BUG FIX ]: Removed htmlspecialchars() to preserve V5.5 JSON Array structure
+            ':media_url' => $media_url, 
             ':ip' => $sender_ip
         ]);
 

@@ -130,6 +130,7 @@ try {
         $bio = trim($_POST['station_bio'] ?? '');
         $bunker = ($_POST['bunker_mode'] === '1') ? '1' : '0';
         $new_pass = trim($_POST['station_passcode'] ?? '');
+        $enc_priv = trim($_POST['encrypted_privkey'] ?? ''); // V5.6 Key Vault
         
         $db->prepare("DELETE FROM system_config WHERE config_key IN ('station_name', 'station_bio', 'bunker_mode')")->execute();
         
@@ -138,23 +139,43 @@ try {
         $stmt->execute(['station_bio', $bio]);
         $stmt->execute(['bunker_mode', $bunker]);
 
-        // Jika passcode baru diisi, timpa hash yang lama
         if (!empty($new_pass)) {
             $hash = password_hash($new_pass, PASSWORD_DEFAULT);
             $db->prepare("DELETE FROM system_config WHERE config_key = 'captain_hash'")->execute();
             $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('captain_hash', ?)")->execute([$hash]);
         }
+        
+        // Simpan gembok baru jika Passcode diubah oleh JS
+        if (!empty($enc_priv)) {
+            $db->prepare("DELETE FROM system_config WHERE config_key = 'encrypted_privkey'")->execute();
+            $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('encrypted_privkey', ?)")->execute([$enc_priv]);
+        }
         exit;
     }
 
-    // 🔐 [ AJAX ENDPOINT: SAVE PUBLIC KEY ]
-    if (isset($_POST['action']) && $_POST['action'] === 'save_pubkey') {
+    // 🔐 [ AJAX ENDPOINT: SAVE PUBLIC KEY & ENCRYPTED VAULT ]
+    if (isset($_POST['action']) && $_POST['action'] === 'save_keys') {
         $pubkey = trim($_POST['public_key'] ?? '');
+        $enc_priv = trim($_POST['encrypted_privkey'] ?? '');
+        
         if (!empty($pubkey)) {
             $db->prepare("DELETE FROM system_config WHERE config_key = 'public_key'")->execute();
             $stmt = $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('public_key', :val)");
             $stmt->execute([':val' => $pubkey]);
         }
+        
+        if (!empty($enc_priv)) {
+            $db->prepare("DELETE FROM system_config WHERE config_key = 'encrypted_privkey'")->execute();
+            $stmt = $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('encrypted_privkey', :val)");
+            $stmt->execute([':val' => $enc_priv]);
+        }
+        exit;
+    }
+    
+    // 🔥 [ AJAX ENDPOINT: LOCAL PURGE (V5.6) ]
+    if (isset($_POST['action']) && $_POST['action'] === 'delete_local') {
+        $id = (int)$_POST['id'];
+        $db->prepare("DELETE FROM transmissions WHERE id = ? AND is_remote = 0")->execute([$id]);
         exit;
     }
     
@@ -193,7 +214,7 @@ try {
             $author = htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN');
             $ghost = !empty($msg['expiry_date']) ? '<span class="t-badge danger t-flicker">[ 👻 GHOSTED ]</span>' : '';
             $src = $msg['is_remote'] ? 'INCOMING FROM:' : 'LOCAL_AUTHOR:';
-            $content = nl2br($msg['content']);
+            $content = nl2br(htmlspecialchars($msg['content']));
             
             // 🗄️ V5.5 ADVANCED MEDIA MATRIX RENDERER (AJAX)
             $img = '';
@@ -226,11 +247,17 @@ try {
                 }
             }
             
-            echo "<div class='t-card mb-3 p-3 transmission-card' data-id='{$msg['id']}'>
-                    <div class='t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap'>
-                        <span>[ {$msg['timestamp']} UTC ] $src <strong class='text-success'>$author</strong></span> $ghost
+            $purge_btn = ($msg['is_remote'] == 0) ? "<button type='button' onclick='globalPurge(this, {$msg['id']})' class='t-btn danger t-btn-sm font-bold' style='padding: 1px 5px; font-size: 9px; line-height: 1;' title='Wipe Local & Allies Timeline'>[ 🔥 PURGE ]</button>" : '';
+
+            echo "<div class='t-card mb-3 p-3 transmission-card' data-id='{$msg['id']}' data-raw-content='".htmlspecialchars($msg['content'], ENT_QUOTES)."'>
+                    <div class='t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap gap-2'>
+                        <span>[ {$msg['timestamp']} UTC ] $src <strong class='text-success'>$author</strong> $ghost</span>
+                        <div class='d-flex gap-2'>
+                            <button type='button' onclick=\"quoteTimeline(this, '{$author}')\" class='t-btn t-btn-sm' style='padding: 1px 5px; font-size: 9px; line-height: 1; border-color: var(--t-green-dim); color: var(--t-green-dim);'>[ 💬 QUOTE ]</button>
+                            $purge_btn
+                        </div>
                     </div>
-                    <p class='m-0' style='font-size: 14px;'>$content</p> $img
+                    <p class='m-0 timeline-msg' style='font-size: 14px;'>$content</p> $img
                   </div>";
         }
         exit;
@@ -352,18 +379,27 @@ try {
                     <?php if (empty($transmissions)): ?>
                         <div class="text-center text-muted py-4 t-border border-dashed">[ TIMELINE IS EMPTY ]</div>
                     <?php else: ?>
-                        <?php foreach ($transmissions as $msg): ?>
-                            <div class="t-card mb-3 p-3 transmission-card" data-id="<?php echo $msg['id']; ?>">
-                                <div class="t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap">
+                        <?php foreach ($transmissions as $msg): 
+                            $is_me = ($msg['is_remote'] == 0);
+                            $author_disp = htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN');
+                        ?>
+                            <div class="t-card mb-3 p-3 transmission-card" data-id="<?php echo $msg['id']; ?>" data-raw-content="<?php echo htmlspecialchars($msg['content'], ENT_QUOTES); ?>">
+                                <div class="t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap gap-2">
                                     <span>
                                         [ <?php echo $msg['timestamp']; ?> UTC ] 
-                                        <?php echo $msg['is_remote'] ? 'INCOMING FROM:' : 'LOCAL_AUTHOR:'; ?> 
-                                        <strong class="text-success"><?php echo htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN'); ?></strong>
+                                        <?php echo $is_me ? 'LOCAL_AUTHOR:' : 'INCOMING FROM:'; ?> 
+                                        <strong class="text-success"><?php echo $author_disp; ?></strong>
+                                        <?php if(!empty($msg['expiry_date'])) echo '<span class="t-badge danger t-flicker ml-2">[ 👻 GHOSTED ]</span>'; ?>
                                     </span>
-                                    <?php if(!empty($msg['expiry_date'])) echo '<span class="t-badge danger t-flicker">[ 👻 GHOSTED ]</span>'; ?>
+                                    <div class="d-flex gap-2">
+                                        <button type="button" onclick="quoteTimeline(this, '<?php echo $author_disp; ?>')" class="t-btn t-btn-sm" style="padding: 1px 5px; font-size: 9px; line-height: 1; border-color: var(--t-green-dim); color: var(--t-green-dim);">[ 💬 QUOTE ]</button>
+                                        <?php if($is_me): ?>
+                                            <button type="button" onclick="globalPurge(this, <?php echo $msg['id']; ?>)" class="t-btn danger t-btn-sm font-bold" style="padding: 1px 5px; font-size: 9px; line-height: 1;" title="Wipe Local & Allies Timeline">[ 🔥 PURGE ]</button>
+                                        <?php endif; ?>
+                                    </div>
                                 </div>
-                                <p class="m-0" style="font-size: 14px;">
-                                    <?php echo nl2br($msg['content']); ?>
+                                <p class="m-0 timeline-msg" style="font-size: 14px;">
+                                    <?php echo nl2br(htmlspecialchars($msg['content'])); ?>
                                 </p>
                                 
                                 <?php if(!empty($msg['media_url'])): 
@@ -574,6 +610,170 @@ try {
 
     <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
+        // ==========================================
+        // 🔐 [ V5.6 THE ENCRYPTED KEY VAULT (ENGINE) ]
+        // ==========================================
+        async function encryptVault(privPem, passcode) {
+            const enc = new TextEncoder();
+            const keyMaterial = await window.crypto.subtle.importKey(
+                "raw", enc.encode(passcode), {name: "PBKDF2"}, false, ["deriveKey"]
+            );
+            const salt = window.crypto.getRandomValues(new Uint8Array(16));
+            const key = await window.crypto.subtle.deriveKey(
+                {name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256"},
+                keyMaterial, {name: "AES-GCM", length: 256}, false, ["encrypt"]
+            );
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            const cipher = await window.crypto.subtle.encrypt({name: "AES-GCM", iv: iv}, key, new TextEncoder().encode(privPem));
+            
+            const saltB64 = window.btoa(String.fromCharCode.apply(null, new Uint8Array(salt)));
+            const ivB64 = window.btoa(String.fromCharCode.apply(null, new Uint8Array(iv)));
+            const cipherB64 = window.btoa(String.fromCharCode.apply(null, new Uint8Array(cipher)));
+            return `${saltB64}:${ivB64}:${cipherB64}`;
+        }
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            if (!localStorage.getItem('relay_privkey') || !localStorage.getItem('relay_pubkey')) {
+                Terminal.splash.show('> FORGING_QUANTUM_KEYS...');
+                try {
+                    const keyPair = await window.crypto.subtle.generateKey(
+                        { name: "RSA-OAEP", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+                        true, ["encrypt", "decrypt"]
+                    );
+
+                    const exportKey = async (key, type) => {
+                        const exported = await window.crypto.subtle.exportKey(type, key);
+                        return window.btoa(String.fromCharCode.apply(null, new Uint8Array(exported)));
+                    };
+
+                    const pubPem = await exportKey(keyPair.publicKey, "spki");
+                    const privPem = await exportKey(keyPair.privateKey, "pkcs8");
+
+                    localStorage.setItem('relay_pubkey', pubPem);
+                    localStorage.setItem('relay_privkey', privPem);
+
+                    Terminal.splash.hide();
+                    
+                    // Secure Vault Setup
+                    setTimeout(async () => {
+                        const formData = new FormData();
+                        formData.append('action', 'save_keys');
+                        formData.append('public_key', pubPem);
+
+                        const pc = prompt("> 🔐 IDENTITY VAULT SETUP\nTo sync this device's identity with your other devices, enter your Master Passcode to lock your Private Key in the server vault:\n(Cancel to skip)");
+                        if (pc) {
+                            try {
+                                const encPriv = await encryptVault(privPem, pc);
+                                formData.append('encrypted_privkey', encPriv);
+                            } catch(e) { console.error("Vault encryption failed", e); }
+                        }
+                        
+                        await fetch('console.php', { method: 'POST', body: formData });
+                        Terminal.toast('[✓] E2E KEYS FORGED SUCCESSFULLY', 'success');
+                    }, 500);
+
+                } catch (err) {
+                    console.error(err);
+                    Terminal.splash.hide();
+                    Terminal.toast('[!] KEY GENERATION FAILED', 'danger');
+                }
+            }
+        });
+
+        // ==========================================
+        // 💬 [ V5.6 TACTICAL QUOTE & GLOBAL PURGE ]
+        // ==========================================
+        function quoteTimeline(btn, author) {
+            const container = btn.closest('.transmission-card');
+            const msgElement = container.querySelector('.timeline-msg');
+            const hasMedia = container.querySelector('.media-matrix') || container.querySelector('.audio-play-btn') || container.querySelector('.matrix-img') ? true : false;
+            
+            let originalText = msgElement.innerText.trim();
+
+            let quoteBlock = `> [ TRANSMISI DARI: ${author} ]\n`;
+            if (originalText.length > 0) {
+                const lines = originalText.split('\n').map(line => `> ${line}`);
+                quoteBlock += lines.join('\n') + '\n';
+            }
+            if (hasMedia) {
+                quoteBlock += `> [ 📎 MEDIA_ATTACHED ]\n`;
+            }
+            
+            const input = document.querySelector('#broadcast-form textarea[name="content"]');
+            input.value = quoteBlock + '\n' + input.value;
+            input.focus();
+        }
+
+        async function globalPurge(btn, msgId) {
+            if (confirm('> THE GLOBAL PURGE PROTOCOL\n\nWARNING: This will permanently delete this broadcast locally AND fire a silent missile to wipe it from all allied Star Chart nodes.\n\nExecute?')) {
+                Terminal.splash.show('> INITIATING GLOBAL_PURGE...');
+                
+                const container = btn.closest('.transmission-card');
+                const rawContent = container.getAttribute('data-raw-content');
+                
+                // 1. Fire Global Purge to allies
+                const fireData = new FormData();
+                fireData.append('visibility', 'global_purge');
+                fireData.append('content', rawContent); 
+                try {
+                    await fetch('core/transmitter.php', { method: 'POST', body: fireData });
+                } catch(e) {}
+
+                // 2. Delete Locally
+                const delData = new FormData();
+                delData.append('action', 'delete_local');
+                delData.append('id', msgId);
+                await fetch('console.php', { method: 'POST', body: delData });
+                
+                Terminal.toast('[✓] GLOBAL PURGE EXECUTED', 'success');
+                setTimeout(() => location.reload(), 1000);
+            }
+        }
+
+        // ==========================================
+        // 🎛️ [ THE CONTROL ROOM ENGINE ]
+        // ==========================================
+        const crForm = document.getElementById('control-room-form');
+        if (crForm) {
+            crForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const btn = this.querySelector('button[type="submit"]');
+                btn.innerText = '[ UPDATING_CORE_MEMORY... ]';
+                
+                const newName = document.getElementById('cr-name').value;
+                const newBio = document.getElementById('cr-bio').value;
+                const isBunker = document.getElementById('cr-bunker').checked ? '1' : '0';
+                const newPass = document.getElementById('cr-passcode').value;
+                
+                const formData = new FormData();
+                formData.append('action', 'save_control_room');
+                formData.append('station_name', newName);
+                formData.append('station_bio', newBio);
+                formData.append('bunker_mode', isBunker);
+                formData.append('station_passcode', newPass);
+
+                // Auto Re-Encrypt Vault if passcode is changed
+                if (newPass) {
+                    const privPem = localStorage.getItem('relay_privkey');
+                    if (privPem) {
+                        try {
+                            const encPriv = await encryptVault(privPem, newPass);
+                            formData.append('encrypted_privkey', encPriv);
+                        } catch(err) { console.error('Failed to re-encrypt vault', err); }
+                    }
+                }
+                
+                try {
+                    await fetch('console.php', { method: 'POST', body: formData });
+                    Terminal.toast('[✓] STATION CONFIGURATION UPDATED', 'success');
+                    setTimeout(() => location.reload(), 1000);
+                } catch (err) {
+                    Terminal.toast('[!] CONFIGURATION UPDATE FAILED', 'danger');
+                    btn.innerText = '[ APPLY_CONFIGURATION ]';
+                }
+            });
+        }
+
         // ==========================================
         // 🎙️ [ TACTICAL SQUELCH GENERATOR (Web Audio API) ]
         // ==========================================
@@ -907,39 +1107,6 @@ try {
                         }
                     }
                 }, 2000);
-            });
-        }
-
-        // ==========================================
-        // 🎛️ [ THE CONTROL ROOM ENGINE ]
-        // ==========================================
-        const crForm = document.getElementById('control-room-form');
-        if (crForm) {
-            crForm.addEventListener('submit', async function(e) {
-                e.preventDefault();
-                const btn = this.querySelector('button[type="submit"]');
-                btn.innerText = '[ UPDATING_CORE_MEMORY... ]';
-                
-                const newName = document.getElementById('cr-name').value;
-                const newBio = document.getElementById('cr-bio').value;
-                const isBunker = document.getElementById('cr-bunker').checked ? '1' : '0';
-                const newPass = document.getElementById('cr-passcode').value;
-                
-                const formData = new FormData();
-                formData.append('action', 'save_control_room');
-                formData.append('station_name', newName);
-                formData.append('station_bio', newBio);
-                formData.append('bunker_mode', isBunker);
-                formData.append('station_passcode', newPass);
-                
-                try {
-                    await fetch('console.php', { method: 'POST', body: formData });
-                    Terminal.toast('[✓] STATION CONFIGURATION UPDATED', 'success');
-                    setTimeout(() => location.reload(), 1000);
-                } catch (err) {
-                    Terminal.toast('[!] CONFIGURATION UPDATE FAILED', 'danger');
-                    btn.innerText = '[ APPLY_CONFIGURATION ]';
-                }
             });
         }
 

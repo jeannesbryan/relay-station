@@ -1,8 +1,9 @@
 <?php
 require_once 'ssl_shield.php';
 // ==========================================================
-// 🚀 RELAY STATION: TRANSMITTER ENGINE (E2E ENABLED)
-// Handles Public, Direct, Ghost Protocol messages, Media, Sonar Pulse, ACKs, and PTT Audio
+// 🚀 RELAY STATION: TRANSMITTER ENGINE (E2E ENABLED v5.6)
+// Handles Public, Direct, Ghost Protocol, Media, Sonar Pulse, ACKs, 
+// and the new Scorched Earth & Global Purge Protocols.
 // ==========================================================
 
 date_default_timezone_set('UTC'); // Enforce UTC to prevent Ghost Protocol timing issues
@@ -39,8 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $my_planet_url = rtrim($protocol . $host . $base_path, '/');
     $author_alias = 'LOCAL_COMMAND'; 
     
-    // Prevent empty payload transmission
-    if ($content === '') {
+    // Prevent empty payload transmission (Unless it's a structural purge signal)
+    if ($content === '' && $visibility !== 'scorched_earth') {
         $redirect = ($visibility === 'direct') ? '../direct.php' : '../console.php';
         header("Location: $redirect?error=empty_payload");
         exit;
@@ -57,14 +58,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $content = strtoupper($content); // Force uppercase for Morse Payload
     }
 
+    // 🚀 [ TACTICAL SIGNAL CLASSIFICATION ]
+    // Signals that bypass media processing and local database insertion
+    $tactical_signals = ['sonar_pulse', 'ack_receipt', 'scorched_earth', 'global_purge'];
+
     // ==========================================
     // 🖼️ & 🎙️ [ ADVANCED MEDIA MATRIX (V5.5) ]
     // ==========================================
     $final_media_url = null;
     $media_urls = []; // Container for all processed media
 
-    // Skip media processing for Sonar Pulses and ACK Receipts
-    if ($visibility !== 'sonar_pulse' && $visibility !== 'ack_receipt') {
+    // Skip media processing for Tactical Signals
+    if (!in_array($visibility, $tactical_signals)) {
         $upload_dir = '../media/';
         if (!is_dir($upload_dir)) { mkdir($upload_dir, 0755, true); }
 
@@ -163,7 +168,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         // 4. WRITE TO LOCAL CORE MEMORY 
-        if ($visibility !== 'sonar_pulse' && $visibility !== 'ack_receipt') {
+        // Skip insertion for all Tactical Signals (Sonar, ACKs, Purges)
+        if (!in_array($visibility, $tactical_signals)) {
             $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, target_planet, is_remote, author_alias, expiry_date, media_url) VALUES (:content, :visibility, :target, 0, :author, :expiry, :media)");
             $stmt->execute([
                 // [ E2E NEW ] Save local ciphertext (locked with own Public Key)
@@ -189,7 +195,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // --- [ TRANSMISSION ROUTING ] ---
 
-        if ($visibility === 'public') {
+        if ($visibility === 'public' || $visibility === 'global_purge') {
             // [ SCATTER BEAM ] Broadcast to all allies in the Star Chart
             $query = $db->query("SELECT planet_url FROM following");
             $allies = $query->fetchAll(PDO::FETCH_ASSOC);
@@ -221,8 +227,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 curl_multi_close($mh);
             }
 
-        } elseif ($visibility === 'direct' || $visibility === 'sonar_pulse' || $visibility === 'ack_receipt') {
-            // [ LASER LINK / SONAR PULSE / ACK RECEIPT ] Fire specific message/ping
+        } elseif (in_array($visibility, ['direct', 'sonar_pulse', 'ack_receipt', 'scorched_earth'])) {
+            // [ LASER LINK / TACTICAL PULSES ] Fire specific message/ping to single target
             if (!empty($target_planet)) {
                 $target_url = rtrim($target_planet, '/') . '/api_inbox.php';
                 
@@ -242,10 +248,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         // Mission complete, return to appropriate Radar
-        if ($visibility === 'ack_receipt') {
+        if (in_array($visibility, ['ack_receipt', 'scorched_earth', 'global_purge'])) {
             // Sinyal ini ditembak via AJAX (Latar Belakang), jangan lakukan redirect!
             header('Content-Type: application/json');
-            echo json_encode(['status' => 'success', 'message' => '[ ACK FIRED ]']);
+            echo json_encode(['status' => 'success', 'message' => "[ TACTICAL SIGNAL $visibility FIRED ]"]);
             exit;
         } elseif ($visibility === 'direct') {
             header("Location: ../direct.php?status=transmission_successful");
@@ -256,7 +262,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
 
     } catch (PDOException $e) {
-        if ($visibility === 'ack_receipt') {
+        if (in_array($visibility, ['ack_receipt', 'scorched_earth', 'global_purge'])) {
             header('Content-Type: application/json');
             echo json_encode(['status' => 'error']);
             exit;
