@@ -48,7 +48,17 @@ try {
         
         foreach ($transmissions as $msg) {
             $author = htmlspecialchars($msg['author_alias'] ?? 'LOCAL_COMMAND');
-            $img = !empty($msg['media_url']) ? '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" class="t-hologram-img" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>' : '';
+            $img = '';
+            
+            // 🎙️ MEDIA & PTT RENDERING ENGINE
+            if (!empty($msg['media_url'])) {
+                $ext = strtolower(pathinfo($msg['media_url'], PATHINFO_EXTENSION));
+                if (in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4'])) {
+                    $img = '<div class="mt-3 text-center"><button type="button" class="t-btn warning t-btn-sm audio-play-btn" data-src="'.htmlspecialchars($msg['media_url']).'" style="font-size: 11px;">[ ▶️ PLAY AUDIO_LOG ]</button></div>';
+                } else {
+                    $img = '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" class="t-hologram-img" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>';
+                }
+            }
             
             echo "<div class='t-card mb-3 p-3 transmission-card' data-id='{$msg['id']}'>
                     <div class='t-bubble-meta t-border-bottom pb-2 mb-2'>
@@ -131,9 +141,19 @@ try {
                                     <p class="m-0" style="font-size: 14px;">
                                         <?php echo nl2br(htmlspecialchars($msg['content'])); ?>
                                     </p>
-                                    <?php if(!empty($msg['media_url'])): ?>
+                                    
+                                    <?php if(!empty($msg['media_url'])): 
+                                        $ext = strtolower(pathinfo($msg['media_url'], PATHINFO_EXTENSION));
+                                        $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4']);
+                                    ?>
                                         <div class="mt-3 text-center">
-                                            <img src="<?php echo htmlspecialchars($msg['media_url']); ?>" class="t-hologram-img" alt="Transmission" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;">
+                                            <?php if($is_audio): ?>
+                                                <button type="button" class="t-btn warning t-btn-sm audio-play-btn" data-src="<?php echo htmlspecialchars($msg['media_url']); ?>" style="font-size: 11px;">
+                                                    [ ▶️ PLAY AUDIO_LOG ]
+                                                </button>
+                                            <?php else: ?>
+                                                <img src="<?php echo htmlspecialchars($msg['media_url']); ?>" class="t-hologram-img" alt="Transmission" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;">
+                                            <?php endif; ?>
                                         </div>
                                     <?php endif; ?>
                                 </div>
@@ -157,6 +177,53 @@ try {
     </div>
 
     <script>
+        // ==========================================
+        // ▶️ [ DELEGATED RETRO AUDIO PLAYER ]
+        // ==========================================
+        let currentAudio = null;
+        let currentBtn = null;
+
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.classList.contains('audio-play-btn')) {
+                const btn = e.target;
+                const src = btn.getAttribute('data-src');
+                
+                if (currentAudio && currentBtn === btn) {
+                    if (!currentAudio.paused) {
+                        currentAudio.pause();
+                        btn.innerText = '[ ▶️ PLAY AUDIO_LOG ]';
+                        btn.classList.remove('t-blink');
+                        return;
+                    } else {
+                        currentAudio.play();
+                        btn.innerText = '[ ⏸️ PLAYING... ]';
+                        btn.classList.add('t-blink');
+                        return;
+                    }
+                }
+                
+                if (currentAudio) {
+                    currentAudio.pause();
+                    if(currentBtn) {
+                        currentBtn.innerText = '[ ▶️ PLAY AUDIO_LOG ]';
+                        currentBtn.classList.remove('t-blink');
+                    }
+                }
+                
+                currentAudio = new Audio(src);
+                currentBtn = btn;
+                currentBtn.innerText = '[ ⏸️ PLAYING... ]';
+                currentBtn.classList.add('t-blink');
+                
+                currentAudio.play();
+                
+                currentAudio.onended = () => {
+                    currentBtn.innerText = '[ ▶️ PLAY AUDIO_LOG ]';
+                    currentBtn.classList.remove('t-blink');
+                };
+            }
+        });
+
         // 🔄 [ CURSOR-BASED INFINITE SCROLL ]
         let isFetching = false;
         const loadMoreEl = document.getElementById('load-more');

@@ -5,8 +5,22 @@ require_once 'core/ssl_shield.php';
 // ==========================================
 // Responds to "Ping" signals from foreign stations to prove node validity and capabilities.
 
+// 🛡️ [ BUG FIX 2 ]: BULLETPROOF CORS (Mencegah stuck di Pinging Target Handshake)
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+
+// Jika browser mengirimkan request preflight (OPTIONS), langsung beri lampu hijau dan tutup koneksi
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
+// 🛡️ [ BUG FIX 1 ]: ANTI-CACHE HEADERS (Mencegah Key Mismatch / Teks Enkripsi Gagal Decode)
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Cache-Control: post-check=0, pre-check=0', false);
+header('Pragma: no-cache');
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *'); // Allow other stations to read this ping
 
 $public_key = null;
 $bunker_mode = '0';
@@ -17,7 +31,6 @@ try {
         // 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
         require_once 'core/db_connect.php';
         
-        // [ BUG FIX ]: Always fetch the latest row for config keys
         // Fetch Public Key
         $stmt = $db->query("SELECT config_value FROM system_config WHERE config_key = 'public_key' ORDER BY rowid DESC LIMIT 1");
         if ($stmt) {

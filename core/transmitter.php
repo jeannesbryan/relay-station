@@ -2,7 +2,7 @@
 require_once 'ssl_shield.php';
 // ==========================================================
 // 🚀 RELAY STATION: TRANSMITTER ENGINE (E2E ENABLED)
-// Handles Public, Direct, Ghost Protocol messages, Media, Sonar Pulse, and ACKs
+// Handles Public, Direct, Ghost Protocol messages, Media, Sonar Pulse, ACKs, and PTT Audio
 // ==========================================================
 
 date_default_timezone_set('UTC'); // Enforce UTC to prevent Ghost Protocol timing issues
@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // ==========================================
-    // 🖼️ [ MEDIA PROCESSING ] (With Fallback)
+    // 🖼️ & 🎙️ [ MEDIA & PTT AUDIO PROCESSING ]
     // ==========================================
     $media_url = null;
     // Skip media processing for Sonar Pulses and ACK Receipts
@@ -80,13 +80,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $media_url = $my_planet_url . '/media/' . $filename;
             }
         } 
+        // Priority 1.5: Capture Base64 from PTT Audio Recorder (WebM/Ogg)
+        elseif (!empty($_POST['audio_base64'])) {
+            $audio_base64 = $_POST['audio_base64'];
+            list($type, $audio_base64) = explode(';', $audio_base64);
+            list(, $audio_base64)      = explode(',', $audio_base64);
+            $media_data = base64_decode($audio_base64);
+            
+            // Tentukan ekstensi dari MIME type
+            $ext = 'webm'; // Default fallback
+            if (strpos($type, 'audio/mp4') !== false || strpos($type, 'video/mp4') !== false) $ext = 'm4a';
+            elseif (strpos($type, 'audio/ogg') !== false || strpos($type, 'video/ogg') !== false) $ext = 'ogg';
+
+            $filename = uniqid('ptt_') . '.' . $ext;
+            $filepath = $upload_dir . $filename;
+            
+            if (file_put_contents($filepath, $media_data)) {
+                $media_url = $my_planet_url . '/media/' . $filename;
+            }
+        }
         // Priority 2: Fallback if JS is disabled in browser (Raw Upload)
         elseif (isset($_FILES['media']) && $_FILES['media']['error'] === UPLOAD_ERR_OK) {
             $file_ext = strtolower(pathinfo($_FILES['media']['name'], PATHINFO_EXTENSION));
-            $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+            // Tambahan format audio untuk mendukung file PTT manual
+            $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4'];
             
             if (in_array($file_ext, $allowed_ext)) {
-                $filename = uniqid('sig_') . '.' . $file_ext;
+                $prefix = in_array($file_ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4']) ? 'ptt_' : 'sig_';
+                $filename = uniqid($prefix) . '.' . $file_ext;
                 $target_file = $upload_dir . $filename;
                 
                 if (move_uploaded_file($_FILES['media']['tmp_name'], $target_file)) {

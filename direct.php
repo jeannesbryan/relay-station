@@ -28,7 +28,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 try {
-    // Pastikan kita tidak error jika kolom 'status' belum termigrasi dengan sempurna
     $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'direct' ORDER BY timestamp ASC");
     $transmissions = $query->fetchAll(PDO::FETCH_ASSOC);
 
@@ -37,17 +36,14 @@ try {
 
     // ==========================================
     // 🛠️ [ AWARENESS FOLDER PATH GROUPING ]
-    // Group messages by partner domain & path
     // ==========================================
     $chat_threads = [];
     foreach ($transmissions as $msg) {
         $partner_id = '';
         if ($msg['is_remote'] == 1) {
-            // author_alias format: NAME@domain.com/folder
             $parts = explode('@', $msg['author_alias']);
             $partner_id = end($parts); 
         } else {
-            // target_planet format: https://domain.com/folder
             $parsed = parse_url($msg['target_planet']);
             $host = $parsed['host'] ?? '';
             $path = rtrim($parsed['path'] ?? '', '/');
@@ -81,6 +77,9 @@ try {
         #chat-container::-webkit-scrollbar { width: 6px; }
         #chat-container::-webkit-scrollbar-track { background: var(--t-black); border-left: 1px dashed var(--t-green-dim); }
         #chat-container::-webkit-scrollbar-thumb { background: var(--t-green-dim); }
+        
+        /* PTT Button specific styling to prevent text selection while holding */
+        #ptt-btn { user-select: none; -webkit-user-select: none; touch-action: manipulation; }
     </style>
 </head>
 <body class="t-crt">
@@ -93,7 +92,7 @@ try {
 
     <div class="t-container-fluid mt-4">
         <nav class="t-navbar mb-4">
-            <div class="t-nav-brand"><span class="t-led-dot t-led-green t-blink"></span></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">> SECURE_COMMS (E2E) v5.3</span></div>
+            <div class="t-nav-brand"><span class="t-led-dot t-led-green t-blink"></span></span> RELAY_STATION <span class="fs-small text-muted fw-normal ml-2">> SECURE_COMMS (E2E) v5.4</span></div>
             <div class="t-nav-menu">
                 <a href="console.php" class="t-btn t-btn-sm">[ RETURN_TO_TIMELINE ]</a>
             </div>
@@ -164,9 +163,18 @@ try {
                                             <?php echo nl2br(htmlspecialchars($msg['content'])); ?>
                                         </p>
                                         
-                                        <?php if(!empty($msg['media_url'])): ?>
+                                        <?php if(!empty($msg['media_url'])): 
+                                            $ext = strtolower(pathinfo($msg['media_url'], PATHINFO_EXTENSION));
+                                            $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4']);
+                                        ?>
                                             <div class="mt-2 text-<?php echo $is_me ? 'right' : 'left'; ?>">
-                                                <img src="<?php echo htmlspecialchars($msg['media_url']); ?>" alt="Secure Media" style="max-width: 100%; border: 1px dashed var(--t-<?php echo $is_me ? 'green' : 'yellow'; ?>); border-radius: 4px;">
+                                                <?php if($is_audio): ?>
+                                                    <button type="button" class="t-btn <?php echo $is_me ? 'warning' : 'danger'; ?> t-btn-sm audio-play-btn" data-src="<?php echo htmlspecialchars($msg['media_url']); ?>" style="font-size: 11px;">
+                                                        [ ▶️ PLAY AUDIO_LOG ]
+                                                    </button>
+                                                <?php else: ?>
+                                                    <img src="<?php echo htmlspecialchars($msg['media_url']); ?>" alt="Secure Media" style="max-width: 100%; border: 1px dashed var(--t-<?php echo $is_me ? 'green' : 'yellow'; ?>); border-radius: 4px;">
+                                                <?php endif; ?>
                                             </div>
                                         <?php endif; ?>
                                     </div>
@@ -179,17 +187,19 @@ try {
                 <form action="core/transmitter.php" method="POST" enctype="multipart/form-data" id="reply-form" style="display:none;" class="m-0 mt-3 t-card p-3">
                     <input type="hidden" name="visibility" value="direct">
                     <input type="hidden" name="content_local" id="content-local-input">
-
-                    <div class="mb-2">
+                    <input type="hidden" name="audio_base64" id="audio-base64"> <div class="mb-2">
                         <label class="t-form-label">> TARGET_COORDINATES (URL)</label>
                         <input type="url" name="target_planet" id="target-input" class="t-input m-0 text-warning font-bold" placeholder="https://domain.com" required>
                     </div>
                     
-                    <textarea name="content" id="content-input" rows="2" maxlength="180" class="t-textarea mb-1" placeholder="> Enter secure transmission (Max 180 Chars)..." required></textarea>
+                    <textarea name="content" id="content-input" rows="2" maxlength="180" class="t-textarea mb-1" placeholder="> Enter secure transmission (Max 180 Chars)..."></textarea>
                     <div class="text-right text-muted fs-small mb-2" id="char-counter">0 / 180 Bytes</div>
 
-                    <div class="mb-3">
-                        <input type="file" name="media" accept="image/*" class="t-input m-0" style="padding: 6px; font-size: 0.9rem;">
+                    <div class="mb-3 mt-2 d-flex align-items-center gap-2 flex-wrap">
+                        <input type="file" name="media" accept="image/*,audio/*" class="t-input m-0" id="media-input" style="display: none;">
+                        <button type="button" class="t-btn t-btn-sm" onclick="document.getElementById('media-input').click();" style="white-space: nowrap;">[ ATTACH_FILE ]</button>
+                        <button type="button" class="t-btn danger t-btn-sm font-bold" id="ptt-btn" style="white-space: nowrap;" title="Hold to record transmission">[ 🎙️ HOLD_TO_TALK ]</button>
+                        <span id="file-name-display" class="fs-small text-muted" style="flex-grow:1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">> NO_MEDIA</span>
                     </div>
 
                     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -209,6 +219,182 @@ try {
         // Character Counter
         document.getElementById('content-input').addEventListener('input', function() {
             document.getElementById('char-counter').innerText = this.value.length + ' / 180 Bytes';
+        });
+
+        // ==========================================
+        // 🎙️ [ TACTICAL SQUELCH GENERATOR (Web Audio API) ]
+        // ==========================================
+        let audioCtx;
+        function getAudioCtx() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            return audioCtx;
+        }
+
+        function playSquelch(type) {
+            const ctx = getAudioCtx();
+            const duration = 0.15; // 150ms of static
+            
+            // 1. White Noise Generator
+            const bufferSize = ctx.sampleRate * duration; 
+            const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) { data[i] = Math.random() * 2 - 1; }
+            
+            const noise = ctx.createBufferSource();
+            noise.buffer = buffer;
+            
+            // Filter noise to sound like a radio
+            const noiseFilter = ctx.createBiquadFilter();
+            noiseFilter.type = 'bandpass';
+            noiseFilter.frequency.value = 1500;
+            
+            const noiseGain = ctx.createGain();
+            noiseGain.gain.setValueAtTime(1, ctx.currentTime);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+            
+            noise.connect(noiseFilter);
+            noiseFilter.connect(noiseGain);
+            noiseGain.connect(ctx.destination);
+            
+            // 2. Tactical Beep (Start = High, Stop = Low)
+            const osc = ctx.createOscillator();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(type === 'start' ? 2200 : 1200, ctx.currentTime);
+            
+            const oscGain = ctx.createGain();
+            oscGain.gain.setValueAtTime(0.1, ctx.currentTime);
+            oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+            
+            osc.connect(oscGain);
+            oscGain.connect(ctx.destination);
+            
+            // Fire!
+            noise.start();
+            osc.start();
+            osc.stop(ctx.currentTime + duration);
+        }
+
+        // ==========================================
+        // 🎙️ [ THE PUSH-TO-TALK ENGINE (MediaRecorder) ]
+        // ==========================================
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+        
+        const pttBtn = document.getElementById('ptt-btn');
+        const fileDisplay = document.getElementById('file-name-display');
+        const audioBase64Input = document.getElementById('audio-base64');
+        const mediaInput = document.getElementById('media-input');
+
+        async function startRecording() {
+            if (isRecording) return;
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+                
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const reader = new FileReader();
+                    reader.readAsDataURL(audioBlob);
+                    reader.onloadend = () => {
+                        audioBase64Input.value = reader.result;
+                        mediaInput.value = ''; // Clear native file input
+                        fileDisplay.innerText = '> [ PTT_AUDIO_READY ]';
+                        fileDisplay.className = 'fs-small text-warning font-bold t-blink';
+                    };
+                    stream.getTracks().forEach(track => track.stop()); // Release Mic
+                };
+                
+                mediaRecorder.start();
+                isRecording = true;
+                playSquelch('start');
+                
+                pttBtn.classList.add('warning', 't-blink');
+                pttBtn.classList.remove('danger');
+                pttBtn.innerText = '[ 🔴 RECORDING... ]';
+                fileDisplay.innerText = '> LISTENING...';
+                fileDisplay.className = 'fs-small text-danger t-blink';
+            } catch (err) {
+                console.error(err);
+                Terminal.toast('[!] MIC ACCESS DENIED. CHECK BROWSER PERMISSIONS.', 'danger');
+            }
+        }
+
+        function stopRecording() {
+            if (!isRecording || !mediaRecorder) return;
+            mediaRecorder.stop();
+            isRecording = false;
+            playSquelch('stop');
+            
+            pttBtn.classList.remove('warning', 't-blink');
+            pttBtn.classList.add('danger');
+            pttBtn.innerText = '[ 🎙️ HOLD_TO_TALK ]';
+        }
+
+        // Listeners for Mouse and Touch (Mobile friendly)
+        pttBtn.addEventListener('mousedown', startRecording);
+        pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); }, {passive: false});
+        
+        window.addEventListener('mouseup', stopRecording);
+        pttBtn.addEventListener('touchend', stopRecording);
+
+        // Fallback file input UI update
+        mediaInput.addEventListener('change', function(e) {
+            if(e.target.files.length > 0) {
+                audioBase64Input.value = ''; // Clear PTT if a file is manually selected
+                fileDisplay.innerText = '> ' + e.target.files[0].name;
+                fileDisplay.className = 'fs-small text-muted';
+            }
+        });
+
+        // ==========================================
+        // ▶️ [ RETRO AUDIO PLAYER ]
+        // ==========================================
+        let currentAudio = null;
+        let currentBtn = null;
+
+        document.querySelectorAll('.audio-play-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const src = this.getAttribute('data-src');
+                
+                if (currentAudio && currentBtn === this) {
+                    if (!currentAudio.paused) {
+                        currentAudio.pause();
+                        this.innerText = '[ ▶️ PLAY AUDIO_LOG ]';
+                        this.classList.remove('t-blink');
+                        return;
+                    } else {
+                        currentAudio.play();
+                        this.innerText = '[ ⏸️ PLAYING... ]';
+                        this.classList.add('t-blink');
+                        return;
+                    }
+                }
+                
+                if (currentAudio) {
+                    currentAudio.pause();
+                    if(currentBtn) {
+                        currentBtn.innerText = '[ ▶️ PLAY AUDIO_LOG ]';
+                        currentBtn.classList.remove('t-blink');
+                    }
+                }
+                
+                currentAudio = new Audio(src);
+                currentBtn = this;
+                currentBtn.innerText = '[ ⏸️ PLAYING... ]';
+                currentBtn.classList.add('t-blink');
+                
+                currentAudio.play();
+                
+                currentAudio.onended = () => {
+                    currentBtn.innerText = '[ ▶️ PLAY AUDIO_LOG ]';
+                    currentBtn.classList.remove('t-blink');
+                };
+            });
         });
 
         // ==========================================
@@ -240,12 +426,10 @@ try {
             if(!privPem) return;
 
             try {
-                // 1. Convert Base64 Private Key to ArrayBuffer
                 const binStr = window.atob(privPem);
                 const bytes = new Uint8Array(binStr.length);
                 for (let i = 0; i < binStr.length; i++) { bytes[i] = binStr.charCodeAt(i); }
                 
-                // 2. Import Key to Web Crypto API
                 const privateKey = await window.crypto.subtle.importKey(
                     "pkcs8", bytes.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["decrypt"]
                 );
@@ -253,10 +437,8 @@ try {
                 const dec = new TextDecoder();
                 const msgs = document.querySelectorAll('.e2e-msg');
                 
-                // 3. Execute Mass Decryption
                 for(let msg of msgs) {
                     const cipherText = msg.getAttribute('data-cipher');
-                    // Check if text is long enough to be considered Base64 RSA
                     if (cipherText.length > 200 && /^[A-Za-z0-9+/=]+$/.test(cipherText)) {
                         try {
                             const cBinStr = window.atob(cipherText);
@@ -267,11 +449,9 @@ try {
                                 { name: "RSA-OAEP" }, privateKey, cBytes.buffer
                             );
                             
-                            // Replace cipher with plain text, apply dim green color to indicate success
                             msg.innerHTML = dec.decode(decrypted).replace(/\n/g, '<br>');
                             msg.style.color = "var(--t-green-dim)";
                         } catch(e) {
-                            // If failed (wrong key), leave as cipher text
                             console.log('Decryption skip: ', e);
                         }
                     }
@@ -290,13 +470,21 @@ try {
             Terminal.splash.show('> ESTABLISHING QUANTUM LINK...');
 
             const targetUrl = document.getElementById('target-input').value.replace(/\/$/, '');
-            const rawContent = document.getElementById('content-input').value;
+            let rawContent = document.getElementById('content-input').value;
             const localPem = localStorage.getItem('relay_pubkey');
             
+            // Failsafe: Prevent empty payload error if sending Audio/Media only
+            if (rawContent.trim() === '' && (document.getElementById('audio-base64').value !== '' || document.getElementById('media-input').files.length > 0)) {
+                rawContent = '[ 🎙️ SECURE_MEDIA_TRANSMISSION ]';
+            } else if (rawContent.trim() === '') {
+                Terminal.splash.hide();
+                Terminal.toast('[!] TRANSMISSION CANNOT BE EMPTY', 'danger');
+                return;
+            }
+
             try {
                 if(!localPem) throw new Error("Local Public Key is missing! Open Main Console to generate one.");
 
-                // 1. Fetch Target Public Key (Handshake)
                 Terminal.splash.show('> PINGING TARGET HANDSHAKE...');
                 const pingRes = await fetch(targetUrl + '/api_ping.php');
                 if(!pingRes.ok) throw new Error("Target node is unreachable or offline.");
@@ -308,7 +496,6 @@ try {
 
                 Terminal.splash.show('> ENCRYPTING PAYLOADS...');
                 
-                // Helper to import Public Key
                 async function importPubKey(pem) {
                     const binStr = window.atob(pem);
                     const bytes = new Uint8Array(binStr.length);
@@ -320,19 +507,15 @@ try {
                 const localPubKey = await importPubKey(localPem);
                 const encodedMsg = new TextEncoder().encode(rawContent);
 
-                // 2. Encrypt for Target (Outer Capsule)
                 const cipherTarget = await window.crypto.subtle.encrypt({ name: "RSA-OAEP" }, targetPubKey, encodedMsg);
                 const base64Target = window.btoa(String.fromCharCode.apply(null, new Uint8Array(cipherTarget)));
 
-                // 3. Encrypt for Local (Inner Capsule)
                 const cipherLocal = await window.crypto.subtle.encrypt({ name: "RSA-OAEP" }, localPubKey, encodedMsg);
                 const base64Local = window.btoa(String.fromCharCode.apply(null, new Uint8Array(cipherLocal)));
 
-                // 4. Inject Ciphertexts to Form
                 document.getElementById('content-input').value = base64Target;
                 document.getElementById('content-local-input').value = base64Local;
                 
-                // 5. Fire the Engine
                 replyForm.submit();
 
             } catch(err) {
@@ -376,12 +559,9 @@ try {
                     const formData = new FormData();
                     formData.append('visibility', 'ack_receipt');
                     formData.append('target_planet', 'https://' + domain);
-                    formData.append('content', 'ACK'); // Placeholder, won't be saved
+                    formData.append('content', 'ACK'); 
                     
-                    fetch('core/transmitter.php', {
-                        method: 'POST',
-                        body: formData
-                    }).catch(e => console.log('> ACK Dispatch Failed'));
+                    fetch('core/transmitter.php', { method: 'POST', body: formData }).catch(e => console.log('> ACK Dispatch Failed'));
                 }
             }
         }

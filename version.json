@@ -1,7 +1,7 @@
 {
-    "version": "5.3",
-    "codename": "Quantum ACK",
+    "version": "5.4",
+    "codename": "Vocal Command",
     "status": "stable",
-    "changelog": "QUANTUM ACK V5.3:\n- [COMMS] The ACK Protocol: Introduced a decentralized, silent read-receipt system for E2E Direct Messages with real-time [ SENT ] and [ READ ] UI indicators.\n- [UI] Control Room Overhaul: Centralized Bunker Mode toggle and Change Master Passcode functionality into a single dashboard.\n- [SYSTEM] Smart OTA & UI Polish: Updater now autonomously detects local versions. Improved Sonar UI to dynamically decrement and clean up notification alerts after decryption.",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v5.3/Relay-OTA-Update-v5.3.zip"
+    "changelog": "VOCAL COMMAND V5.4:\n- [COMMS] PTT Audio Logs: Integrated Push-To-Talk Walkie-Talkie feature for E2E Direct Messages and Public Timeline using MediaRecorder API.\n- [UI] Tactical Squelch: Added native Web Audio API white noise generator for realistic radio squelch effects.\n- [UI] Retro Audio Player: Redesigned audio attachments into interactive, retro-military playback buttons.",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v5.4/Relay-OTA-Update-v5.4.zip"
 }

@@ -194,7 +194,17 @@ try {
             $ghost = !empty($msg['expiry_date']) ? '<span class="t-badge danger t-flicker">[ 👻 GHOSTED ]</span>' : '';
             $src = $msg['is_remote'] ? 'INCOMING FROM:' : 'LOCAL_AUTHOR:';
             $content = nl2br($msg['content']);
-            $img = !empty($msg['media_url']) ? '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" class="t-hologram-img" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>' : '';
+            
+            // 🎙️ MEDIA & PTT RENDERING ENGINE FOR PAGINATION
+            $img = '';
+            if (!empty($msg['media_url'])) {
+                $ext = strtolower(pathinfo($msg['media_url'], PATHINFO_EXTENSION));
+                if (in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4'])) {
+                    $img = '<div class="mt-3 text-center"><button type="button" class="t-btn warning t-btn-sm audio-play-btn" data-src="'.htmlspecialchars($msg['media_url']).'" style="font-size: 11px;">[ ▶️ PLAY AUDIO_LOG ]</button></div>';
+                } else {
+                    $img = '<div class="mt-3 text-center"><img src="'.htmlspecialchars($msg['media_url']).'" class="t-hologram-img" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;"></div>';
+                }
+            }
             
             echo "<div class='t-card mb-3 p-3 transmission-card' data-id='{$msg['id']}'>
                     <div class='t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap'>
@@ -244,6 +254,8 @@ try {
         #installAppBtn { display: none; }
         .t-hologram-img { filter: grayscale(100%) sepia(100%) hue-rotate(80deg) brightness(0.7) contrast(1.2); transition: 0.3s ease-in-out; cursor: crosshair; }
         .t-hologram-img:hover { filter: grayscale(0%) sepia(0%) hue-rotate(0deg) brightness(1) contrast(1); }
+        /* PTT Button specific styling */
+        #ptt-btn { user-select: none; -webkit-user-select: none; touch-action: manipulation; }
     </style>
 </head>
 <body class="t-crt">
@@ -280,11 +292,12 @@ try {
                     <form action="core/transmitter.php" method="POST" enctype="multipart/form-data" class="m-0" id="broadcast-form">
                         <input type="hidden" name="visibility" value="public">
                         <input type="hidden" name="media_base64" id="media-base64">
-                        <textarea name="content" rows="3" class="t-textarea" placeholder="> What's happening in your sector?" required></textarea>
+                        <input type="hidden" name="audio_base64" id="audio-base64"> <textarea name="content" rows="3" class="t-textarea" placeholder="> What's happening in your sector?"></textarea>
 
-                        <div class="mb-3 mt-2 d-flex align-items-center gap-2">
-                            <input type="file" id="media-input" name="media" accept="image/*" style="display: none;">
-                            <button type="button" class="t-btn t-btn-sm" onclick="document.getElementById('media-input').click();" style="white-space: nowrap;">[ ATTACH_MEDIA ]</button>
+                        <div class="mb-3 mt-2 d-flex align-items-center gap-2 flex-wrap">
+                            <input type="file" id="media-input" name="media" accept="image/*,audio/*" style="display: none;">
+                            <button type="button" class="t-btn t-btn-sm" onclick="document.getElementById('media-input').click();" style="white-space: nowrap;">[ ATTACH_FILE ]</button>
+                            <button type="button" class="t-btn danger t-btn-sm font-bold" id="ptt-btn" style="white-space: nowrap;" title="Hold to record broadcast">[ 🎙️ HOLD_TO_TALK ]</button>
                             <span id="file-name-display" class="fs-small text-muted" style="flex-grow:1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">> NO_MEDIA</span>
                             <span id="compress-status" class="fs-small text-warning font-bold"></span>
                         </div>
@@ -316,9 +329,18 @@ try {
                                     <?php echo nl2br($msg['content']); ?>
                                 </p>
                                 
-                                <?php if(!empty($msg['media_url'])): ?>
+                                <?php if(!empty($msg['media_url'])): 
+                                    $ext = strtolower(pathinfo($msg['media_url'], PATHINFO_EXTENSION));
+                                    $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4']);
+                                ?>
                                     <div class="mt-3 text-center">
-                                        <img src="<?php echo htmlspecialchars($msg['media_url']); ?>" class="t-hologram-img" alt="Transmission Media" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;">
+                                        <?php if($is_audio): ?>
+                                            <button type="button" class="t-btn warning t-btn-sm audio-play-btn" data-src="<?php echo htmlspecialchars($msg['media_url']); ?>" style="font-size: 11px;">
+                                                [ ▶️ PLAY AUDIO_LOG ]
+                                            </button>
+                                        <?php else: ?>
+                                            <img src="<?php echo htmlspecialchars($msg['media_url']); ?>" class="t-hologram-img" alt="Transmission Media" style="max-width: 100%; border: 1px dashed var(--t-green); border-radius: 4px;">
+                                        <?php endif; ?>
                                     </div>
                                 <?php endif; ?>
                             </div>
@@ -410,14 +432,14 @@ try {
                         <?php foreach ($star_chart as $star): 
                             $clean_alias = trim(preg_replace('/\[v\d+(\.\d+)*\]/i', '', $star['alias']));
                         ?>
-                            <div class="t-list-item d-flex justify-content-between align-items-center" style="cursor: default;">
-                                <div style="overflow: hidden;">
+                            <div class="t-list-item" style="cursor: default;">
+                                <div style="overflow: hidden; margin-bottom: 8px;">
                                     <span class="t-list-item-title"><?php echo htmlspecialchars($clean_alias); ?></span>
-                                    <span class="t-list-item-subtitle text-success"><?php echo htmlspecialchars($star['planet_url']); ?></span>
+                                    <span class="t-list-item-subtitle text-success" style="word-break: break-all;"><?php echo htmlspecialchars($star['planet_url']); ?></span>
                                 </div>
                                 <div class="d-flex gap-2">
-                                    <button onclick="openSonarModal('<?php echo htmlspecialchars($star['planet_url']); ?>', '<?php echo htmlspecialchars($clean_alias); ?>')" class="t-btn warning t-btn-sm" style="padding: 2px 6px; min-width: auto;" title="Send Sonar Pulse">[ 📡 ]</button>
-                                    <a href="core/remove_planet.php?id=<?php echo $star['id']; ?>" class="t-btn danger t-btn-sm" style="padding: 2px 6px; min-width: auto;" title="Disconnect" onclick="return confirm('> WARNING: Disconnect from this node?');">[ ❌ ]</a>
+                                    <button onclick="openSonarModal('<?php echo htmlspecialchars($star['planet_url']); ?>', '<?php echo htmlspecialchars($clean_alias); ?>')" class="t-btn warning t-btn-sm flex-fill text-center" style="padding: 4px; font-size: 11px;">[ 📡 SONAR ]</button>
+                                    <a href="core/remove_planet.php?id=<?php echo $star['id']; ?>" class="t-btn danger t-btn-sm flex-fill text-center" style="padding: 4px; font-size: 11px; text-decoration: none;" onclick="return confirm('> WARNING: Disconnect from this node?');">[ ❌ DISCONNECT ]</a>
                                 </div>
                             </div>
                         <?php endforeach; ?>
@@ -493,6 +515,180 @@ try {
     <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
         // ==========================================
+        // 🎙️ [ TACTICAL SQUELCH GENERATOR (Web Audio API) ]
+        // ==========================================
+        let audioCtx;
+        function getAudioCtx() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            return audioCtx;
+        }
+
+        function playSquelch(type) {
+            const ctx = getAudioCtx();
+            const duration = 0.15; 
+            
+            const bufferSize = ctx.sampleRate * duration; 
+            const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) { data[i] = Math.random() * 2 - 1; }
+            
+            const noise = ctx.createBufferSource();
+            noise.buffer = buffer;
+            
+            const noiseFilter = ctx.createBiquadFilter();
+            noiseFilter.type = 'bandpass';
+            noiseFilter.frequency.value = 1500;
+            
+            const noiseGain = ctx.createGain();
+            noiseGain.gain.setValueAtTime(1, ctx.currentTime);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+            
+            noise.connect(noiseFilter);
+            noiseFilter.connect(noiseGain);
+            noiseGain.connect(ctx.destination);
+            
+            const osc = ctx.createOscillator();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(type === 'start' ? 2200 : 1200, ctx.currentTime);
+            
+            const oscGain = ctx.createGain();
+            oscGain.gain.setValueAtTime(0.1, ctx.currentTime);
+            oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+            
+            osc.connect(oscGain);
+            oscGain.connect(ctx.destination);
+            
+            noise.start();
+            osc.start();
+            osc.stop(ctx.currentTime + duration);
+        }
+
+        // ==========================================
+        // 🎙️ [ THE PUSH-TO-TALK ENGINE (MediaRecorder) ]
+        // ==========================================
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+        
+        const pttBtn = document.getElementById('ptt-btn');
+        const fileDisplay = document.getElementById('file-name-display');
+        const audioBase64Input = document.getElementById('audio-base64');
+        const mediaInput = document.getElementById('media-input');
+
+        async function startRecording() {
+            if (isRecording) return;
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+                
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const reader = new FileReader();
+                    reader.readAsDataURL(audioBlob);
+                    reader.onloadend = () => {
+                        audioBase64Input.value = reader.result;
+                        mediaInput.value = ''; 
+                        fileDisplay.innerText = '> [ PTT_AUDIO_READY ]';
+                        fileDisplay.className = 'fs-small text-warning font-bold t-blink';
+                    };
+                    stream.getTracks().forEach(track => track.stop()); 
+                };
+                
+                mediaRecorder.start();
+                isRecording = true;
+                playSquelch('start');
+                
+                pttBtn.classList.add('warning', 't-blink');
+                pttBtn.classList.remove('danger');
+                pttBtn.innerText = '[ 🔴 RECORDING... ]';
+                fileDisplay.innerText = '> LISTENING...';
+                fileDisplay.className = 'fs-small text-danger t-blink';
+            } catch (err) {
+                console.error(err);
+                Terminal.toast('[!] MIC ACCESS DENIED. CHECK BROWSER PERMISSIONS.', 'danger');
+            }
+        }
+
+        function stopRecording() {
+            if (!isRecording || !mediaRecorder) return;
+            mediaRecorder.stop();
+            isRecording = false;
+            playSquelch('stop');
+            
+            pttBtn.classList.remove('warning', 't-blink');
+            pttBtn.classList.add('danger');
+            pttBtn.innerText = '[ 🎙️ HOLD_TO_TALK ]';
+        }
+
+        if (pttBtn) {
+            pttBtn.addEventListener('mousedown', startRecording);
+            pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); }, {passive: false});
+            window.addEventListener('mouseup', stopRecording);
+            pttBtn.addEventListener('touchend', stopRecording);
+        }
+
+        if (mediaInput) {
+            mediaInput.addEventListener('change', function(e) {
+                if(e.target.files.length > 0) {
+                    audioBase64Input.value = ''; 
+                    fileDisplay.innerText = '> ' + e.target.files[0].name;
+                    fileDisplay.className = 'fs-small text-muted';
+                }
+            });
+        }
+
+        // ==========================================
+        // ▶️ [ DELEGATED RETRO AUDIO PLAYER ]
+        // ==========================================
+        let currentAudio = null;
+        let currentBtn = null;
+
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.classList.contains('audio-play-btn')) {
+                const btn = e.target;
+                const src = btn.getAttribute('data-src');
+                
+                if (currentAudio && currentBtn === btn) {
+                    if (!currentAudio.paused) {
+                        currentAudio.pause();
+                        btn.innerText = '[ ▶️ PLAY AUDIO_LOG ]';
+                        btn.classList.remove('t-blink');
+                        return;
+                    } else {
+                        currentAudio.play();
+                        btn.innerText = '[ ⏸️ PLAYING... ]';
+                        btn.classList.add('t-blink');
+                        return;
+                    }
+                }
+                
+                if (currentAudio) {
+                    currentAudio.pause();
+                    if(currentBtn) {
+                        currentBtn.innerText = '[ ▶️ PLAY AUDIO_LOG ]';
+                        currentBtn.classList.remove('t-blink');
+                    }
+                }
+                
+                currentAudio = new Audio(src);
+                currentBtn = btn;
+                currentBtn.innerText = '[ ⏸️ PLAYING... ]';
+                currentBtn.classList.add('t-blink');
+                
+                currentAudio.play();
+                
+                currentAudio.onended = () => {
+                    currentBtn.innerText = '[ ▶️ PLAY AUDIO_LOG ]';
+                    currentBtn.classList.remove('t-blink');
+                };
+            }
+        });
+
+        // ==========================================
         // 📡 [ SONAR PULSE: UI & VALIDATION ENGINE ]
         // ==========================================
         function openSonarModal(url, alias) {
@@ -503,7 +699,6 @@ try {
             document.getElementById('cr-sonar-code').focus();
         }
         
-        // Regex Shield Level 1: Force Uppercase & Strip non-alphanumeric chars instantly
         const sonarInput = document.getElementById('cr-sonar-code');
         if(sonarInput) {
             sonarInput.addEventListener('input', function() {
@@ -511,10 +706,6 @@ try {
             });
         }
 
-        // ==========================================
-        // 📻 [ THE MORSE SYNTHESIZER ENGINE ]
-        // Web Audio API Generator (Zero external libraries)
-        // ==========================================
         const MORSE_DICT = {
             'A': '.-', 'B': '-...', 'C': '-.-.', 'D': '-..', 'E': '.', 'F': '..-.',
             'G': '--.', 'H': '....', 'I': '..', 'J': '.---', 'K': '-.-', 'L': '.-..',
@@ -526,7 +717,6 @@ try {
         };
 
         async function decodeSonar(code, alertId) {
-            // Final sanitize just in case
             code = code.toUpperCase().replace(/[^A-Z0-9]/g, '');
             const btn = document.getElementById('btn-sonar-' + alertId);
             const display = document.getElementById('sonar-display-' + alertId);
@@ -535,27 +725,24 @@ try {
             btn.innerText = '[ 📻 DECODING... ]';
             display.innerText = '';
 
-            // Initialize Web Audio API
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const oscillator = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
 
             oscillator.type = 'sine';
-            oscillator.frequency.value = 600; // 600Hz Tactical Beep
+            oscillator.frequency.value = 600; 
             
             oscillator.connect(gainNode);
             gainNode.connect(audioCtx.destination);
             
-            // Start silent
             gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
             oscillator.start();
 
-            const dotTime = 0.1; // 100ms standard dot length
+            const dotTime = 0.1; 
 
-            // Iterate through every character
             for (let i = 0; i < code.length; i++) {
                 let char = code[i];
-                display.innerText += char; // Typewriter effect
+                display.innerText += char; 
                 
                 let morse = MORSE_DICT[char];
                 if (morse) {
@@ -563,29 +750,24 @@ try {
                         let symbol = morse[j];
                         let duration = symbol === '.' ? dotTime : dotTime * 3;
                         
-                        // Volume UP (Beep)
                         gainNode.gain.setTargetAtTime(1, audioCtx.currentTime, 0.01);
                         await new Promise(r => setTimeout(r, duration * 1000));
                         
-                        // Volume DOWN (Silence between symbols)
                         gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.01);
                         await new Promise(r => setTimeout(r, dotTime * 1000)); 
                     }
                 }
-                // Silence between letters
                 await new Promise(r => setTimeout(r, dotTime * 3 * 1000)); 
             }
             
             oscillator.stop();
             btn.innerText = '[ ✓ DECODED ]';
             
-            // Remove the alert silently via Background Request & Clean UI
             fetch('core/alert_action.php?id=' + alertId + '&ajax=1').then(() => {
                 setTimeout(() => {
                     const card = btn.closest('.t-card');
                     if(card) {
                         card.remove();
-                        // Dynamic Alert Counter Decrement
                         const sideCounter = document.getElementById('sidebar-alert-counter');
                         const navCounter = document.getElementById('nav-alert-counter');
                         if (sideCounter) {
@@ -640,51 +822,28 @@ try {
         }
 
         // ==========================================
-        // 🔐 [ E2E ENCRYPTION: KEYPAIR RADAR ]
+        // 🚀 [ BROADCAST FORM & AJAX LOGIC ]
         // ==========================================
-        async function initCryptoRadar() {
-            const privKey = localStorage.getItem('relay_privkey');
-            const pubKey = localStorage.getItem('relay_pubkey');
-
-            if (!privKey || !pubKey) {
-                console.log('> GENERATING QUANTUM ENCRYPTION KEYS...');
-                try {
-                    const keyPair = await window.crypto.subtle.generateKey(
-                        {
-                            name: "RSA-OAEP",
-                            modulusLength: 2048,
-                            publicExponent: new Uint8Array([1, 0, 1]),
-                            hash: "SHA-256"
-                        },
-                        true,
-                        ["encrypt", "decrypt"]
-                    );
-
-                    const exportedPriv = await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
-                    const exportedPub = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
-
-                    const privB64 = btoa(String.fromCharCode.apply(null, new Uint8Array(exportedPriv)));
-                    const pubB64 = btoa(String.fromCharCode.apply(null, new Uint8Array(exportedPub)));
-
-                    localStorage.setItem('relay_privkey', privB64);
-                    localStorage.setItem('relay_pubkey', pubB64);
-
-                    // Send Public Key to Core Memory (SQLite)
-                    const formData = new FormData();
-                    formData.append('action', 'save_pubkey');
-                    formData.append('public_key', pubB64);
-
-                    await fetch('console.php', { method: 'POST', body: formData });
-                    Terminal.toast('[✓] E2E KEYS GENERATED', 'success');
-                } catch (err) {
-                    console.error('[!] ENCRYPTION MODULE FAILED:', err);
-                    Terminal.toast('[!] E2E KEY GENERATION FAILED', 'danger');
+        const broadcastForm = document.getElementById('broadcast-form');
+        if (broadcastForm) {
+            broadcastForm.addEventListener('submit', (e) => { 
+                const contentInput = broadcastForm.querySelector('textarea[name="content"]');
+                const audioInput = document.getElementById('audio-base64');
+                const mediaInp = document.getElementById('media-input');
+                
+                // Failsafe: Prevent empty payload error if sending Audio/Media only
+                if (contentInput.value.trim() === '' && (audioInput.value !== '' || mediaInp.files.length > 0)) {
+                    contentInput.value = '[ 🎙️ SECURE_MEDIA_TRANSMISSION ]';
+                } else if (contentInput.value.trim() === '') {
+                    e.preventDefault();
+                    Terminal.toast('[!] TRANSMISSION CANNOT BE EMPTY', 'danger');
+                    return;
                 }
-            }
+                
+                Terminal.splash.show('> TRANSMITTING_SIGNAL...'); 
+            });
         }
-        window.addEventListener('DOMContentLoaded', initCryptoRadar);
 
-        document.getElementById('broadcast-form').addEventListener('submit', () => { Terminal.splash.show('> TRANSMITTING_SIGNAL...'); });
         document.getElementById('follow-form').addEventListener('submit', () => { Terminal.splash.show('> LOCKING_COORDINATES...'); });
 
         function acceptHandshake(url, alertId) {
@@ -700,41 +859,6 @@ try {
         window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; installBtn.style.display = 'inline-block'; });
         installBtn.addEventListener('click', async () => { if (deferredPrompt !== null) { deferredPrompt.prompt(); const { outcome } = await deferredPrompt.userChoice; if (outcome === 'accepted') { installBtn.style.display = 'none'; } deferredPrompt = null; } });
         window.addEventListener('appinstalled', () => { installBtn.style.display = 'none'; });
-
-        const mediaInput = document.getElementById('media-input');
-        const fileDisplay = document.getElementById('file-name-display');
-        
-        if (mediaInput) {
-            mediaInput.addEventListener('change', function(e) {
-                const file = e.target.files[0]; 
-                if(!file) {
-                    fileDisplay.innerText = '> NO_MEDIA';
-                    document.getElementById('compress-status').innerText = '';
-                    return;
-                }
-                
-                fileDisplay.innerText = '> ' + file.name;
-                document.getElementById('compress-status').innerText = 'COMPRESSING...';
-                
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    const img = new Image();
-                    img.onload = function() {
-                        const canvas = document.createElement('canvas');
-                        let width = img.width; let height = img.height;
-                        if(width > 1080) { height = Math.round(height * 1080 / width); width = 1080; } 
-                        canvas.width = width; canvas.height = height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, width, height);
-                        
-                        document.getElementById('media-base64').value = canvas.toDataURL('image/webp', 0.8); 
-                        document.getElementById('compress-status').innerText = '[ COMPRESSED WEBP ]';
-                    }
-                    img.src = event.target.result;
-                }
-                reader.readAsDataURL(file);
-            });
-        }
 
         let isFetching = false;
         const loadMoreEl = document.getElementById('load-more');
