@@ -118,10 +118,30 @@ try {
         <div class="t-card warning" style="width: 90%; max-width: 400px; border-color: var(--t-yellow);">
             <div class="t-card-header text-warning font-bold">> 🔐 IDENTITY VAULT DETECTED</div>
             <div class="p-3 text-center">
-                <p class="fs-small text-muted mb-3">> This device is missing your Private Key. Enter your Master Passcode to securely decrypt and sync your identity from the server.</p>
+                <p class="fs-small text-muted mb-3">> Your local identity is missing or out of sync. Enter your Master Passcode to securely decrypt and restore your identity from the server.</p>
                 <input type="password" id="vault-passcode" class="t-input text-center font-bold mb-3" placeholder="MASTER PASSCODE">
-                <button onclick="triggerVaultUnlock()" class="t-btn warning w-100 font-bold t-glow">[ UNLOCK IDENTITY ]</button>
-                <button onclick="document.getElementById('vault-modal').style.display='none'" class="t-btn mt-2 w-100" style="padding:4px;">[ LATER ]</button>
+                <button onclick="triggerVaultUnlock()" class="t-btn warning w-100 font-bold t-glow">[ RESTORE IDENTITY ]</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="vault-setup-modal" class="t-splash" style="display:none; z-index: 2000; background: rgba(0,0,0,0.9); flex-direction: column; justify-content: center; align-items: center;">
+        <div class="t-card success" style="width: 90%; max-width: 400px; border-color: var(--t-green);">
+            <div class="t-card-header text-success font-bold">> 🔐 IDENTITY VAULT SETUP</div>
+            <div class="p-3 text-center">
+                <p class="fs-small text-muted mb-3">> Your E2E keys are active but NOT backed up. To enable multi-device sync, enter your Master Passcode to lock and backup your keys to the server vault.</p>
+                <input type="password" id="vault-setup-passcode" class="t-input text-center font-bold mb-3" placeholder="MASTER PASSCODE">
+                <button onclick="triggerVaultSetup()" class="t-btn success w-100 font-bold t-glow">[ SECURE IDENTITY ]</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="split-brain-modal" class="t-splash" style="display:none; z-index: 2000; background: rgba(0,0,0,0.9); flex-direction: column; justify-content: center; align-items: center;">
+        <div class="t-card danger" style="width: 90%; max-width: 400px; border-color: var(--t-red);">
+            <div class="t-card-header text-danger font-bold">> 🚨 CRITICAL SYNC ERROR</div>
+            <div class="p-3 text-center">
+                <p class="fs-small text-muted mb-3">> Another device claims this node's identity but failed to backup the Vault. <br><br><strong>Action Required:</strong> Go to the device that created the keys and setup the vault. OR, permanently overwrite the server identity here.</p>
+                <button onclick="forceRebuildIdentity()" class="t-btn danger w-100 font-bold t-glow">[ DESTROY & REBUILD KEYS ]</button>
             </div>
         </div>
     </div>
@@ -283,43 +303,27 @@ try {
     <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
         // ==========================================
-        // 💬 [ V5.6 TACTICAL QUOTE ENGINE ]
+        // 🔐 [ V5.6 THE ENCRYPTED KEY VAULT (ENGINE & DECRYPTOR) ]
         // ==========================================
-        function quoteMessage(btn, author) {
-            const container = btn.closest('.d-flex.flex-column');
-            const msgElement = container.querySelector('.e2e-msg');
-            const hasMedia = container.querySelector('.media-matrix') || container.querySelector('.audio-play-btn') || container.querySelector('.matrix-img') ? true : false;
+        async function encryptVault(privPem, passcode) {
+            const enc = new TextEncoder();
+            const keyMaterial = await window.crypto.subtle.importKey(
+                "raw", enc.encode(passcode), {name: "PBKDF2"}, false, ["deriveKey"]
+            );
+            const salt = window.crypto.getRandomValues(new Uint8Array(16));
+            const key = await window.crypto.subtle.deriveKey(
+                {name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256"},
+                keyMaterial, {name: "AES-GCM", length: 256}, false, ["encrypt"]
+            );
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            const cipher = await window.crypto.subtle.encrypt({name: "AES-GCM", iv: iv}, key, new TextEncoder().encode(privPem));
             
-            let originalText = msgElement.innerText.trim();
-            if (originalText.includes('DECRYPTING') || msgElement.getAttribute('data-cipher') === originalText) {
-                Terminal.toast('[!] CANNOT QUOTE ENCRYPTED TEXT', 'warning');
-                return;
-            }
-
-            let quoteBlock = `> [ TRANSMISI DARI: ${author} ]\n`;
-            if (originalText.length > 0) {
-                const lines = originalText.split('\n').map(line => `> ${line}`);
-                quoteBlock += lines.join('\n') + '\n';
-            }
-            if (hasMedia) {
-                quoteBlock += `> [ 📎 MEDIA_ATTACHED ]\n`;
-            }
-            
-            const input = document.getElementById('content-input');
-            input.value = quoteBlock + '\n' + input.value;
-            input.focus();
-            
-            // Update UI Enforcer
-            if (input.value.length > 180) {
-                input.value = input.value.substring(0, 180); 
-            }
-            document.getElementById('char-counter').innerText = input.value.length + ' / 180 Bytes';
-            document.getElementById('reply-form').style.display = 'block';
+            const saltB64 = window.btoa(String.fromCharCode.apply(null, new Uint8Array(salt)));
+            const ivB64 = window.btoa(String.fromCharCode.apply(null, new Uint8Array(iv)));
+            const cipherB64 = window.btoa(String.fromCharCode.apply(null, new Uint8Array(cipher)));
+            return `${saltB64}:${ivB64}:${cipherB64}`;
         }
 
-        // ==========================================
-        // 🔐 [ V5.6 THE ENCRYPTED KEY VAULT (DECRYPTOR) ]
-        // ==========================================
         async function triggerVaultUnlock() {
             const passcode = document.getElementById('vault-passcode').value;
             if(!passcode) return;
@@ -354,7 +358,7 @@ try {
                 localStorage.setItem('relay_pubkey', pubKey);
 
                 document.getElementById('vault-modal').style.display='none';
-                Terminal.toast('[✓] IDENTITY SYNCED SUCCESSFULLY', 'success');
+                Terminal.toast('[✓] IDENTITY RESTORED SUCCESSFULLY', 'success');
                 setTimeout(() => location.reload(), 1000);
             } catch (e) {
                 document.getElementById('vault-passcode').disabled = false;
@@ -362,6 +366,190 @@ try {
                 document.getElementById('vault-passcode').placeholder = "MASTER PASSCODE";
                 Terminal.toast('[!] INVALID PASSCODE OR CORRUPTED VAULT', 'danger');
             }
+        }
+
+        async function triggerVaultSetup() {
+            const pc = document.getElementById('vault-setup-passcode').value;
+            if (!pc) return;
+            document.getElementById('vault-setup-passcode').disabled = true;
+
+            const privPem = localStorage.getItem('relay_privkey');
+            const pubPem = localStorage.getItem('relay_pubkey');
+            if (!privPem) return;
+
+            try {
+                const encPriv = await encryptVault(privPem, pc);
+                const formData = new FormData();
+                formData.append('action', 'save_keys');
+                formData.append('public_key', pubPem);
+                formData.append('encrypted_privkey', encPriv);
+
+                await fetch('console.php', { method: 'POST', body: formData });
+                document.getElementById('vault-setup-modal').style.display = 'none';
+                Terminal.toast('[✓] IDENTITY VAULT SECURED', 'success');
+            } catch(e) {
+                document.getElementById('vault-setup-passcode').disabled = false;
+                Terminal.toast('[!] VAULT ENCRYPTION FAILED', 'danger');
+            }
+        }
+
+        async function forceRebuildIdentity() {
+            if (confirm("> WARNING: This will permanently destroy the current identity on the server and create a new one. All previous encrypted messages will become unreadable. Proceed?")) {
+                document.getElementById('split-brain-modal').style.display = 'none';
+                await forgeQuantumKeys();
+                document.getElementById('vault-setup-modal').style.display = 'flex';
+            }
+        }
+
+        async function forgeQuantumKeys() {
+            Terminal.splash.show('> FORGING_QUANTUM_KEYS...');
+            try {
+                const keyPair = await window.crypto.subtle.generateKey(
+                    { name: "RSA-OAEP", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+                    true, ["encrypt", "decrypt"]
+                );
+
+                const exportKey = async (key, type) => {
+                    const exported = await window.crypto.subtle.exportKey(type, key);
+                    return window.btoa(String.fromCharCode.apply(null, new Uint8Array(exported)));
+                };
+
+                const pubPem = await exportKey(keyPair.publicKey, "spki");
+                const privPem = await exportKey(keyPair.privateKey, "pkcs8");
+
+                localStorage.setItem('relay_pubkey', pubPem);
+                localStorage.setItem('relay_privkey', privPem);
+
+                const formData = new FormData();
+                formData.append('action', 'save_keys');
+                formData.append('public_key', pubPem);
+                await fetch('console.php', { method: 'POST', body: formData });
+
+                Terminal.splash.hide();
+            } catch (err) {
+                Terminal.splash.hide();
+                Terminal.toast('[!] KEY GENERATION FAILED', 'danger');
+            }
+        }
+
+        // ==========================================
+        // 🧠 [ THE STATE MACHINE: SYNC ENFORCER ]
+        // ==========================================
+        window.addEventListener('DOMContentLoaded', async () => {
+            const serverEncPriv = "<?php echo $encrypted_privkey ?? ''; ?>";
+            const serverPubKey = "<?php echo $server_pubkey ?? ''; ?>";
+            const localPriv = localStorage.getItem('relay_privkey');
+            const localPub = localStorage.getItem('relay_pubkey');
+            
+            // 1. New Device (No Local Keys)
+            if (!localPriv || !localPub) {
+                if (serverEncPriv) {
+                    // Server has a valid vault. Force user to unlock it.
+                    document.getElementById('vault-modal').style.display = 'flex';
+                    return;
+                } else if (serverPubKey) {
+                    // Split Brain: Server has keys, but no vault backup!
+                    document.getElementById('split-brain-modal').style.display = 'flex';
+                    return;
+                } else {
+                    // Brand new station. Forge keys and force vault setup.
+                    await forgeQuantumKeys();
+                    document.getElementById('vault-setup-modal').style.display = 'flex';
+                    return;
+                }
+            }
+
+            // 2. Existing Device (Has Local Keys)
+            if (localPriv && localPub) {
+                if (serverPubKey && localPub !== serverPubKey) {
+                    // Keys out of sync!
+                    if (serverEncPriv) {
+                        document.getElementById('vault-modal').style.display = 'flex';
+                        return;
+                    } else {
+                        document.getElementById('split-brain-modal').style.display = 'flex';
+                        return;
+                    }
+                } else if (!serverEncPriv) {
+                    // Keys are in sync, but NOT backed up to the vault!
+                    document.getElementById('vault-setup-modal').style.display = 'flex';
+                    return;
+                }
+            }
+
+            // 3. Perfect Sync: Execute Decrypter safely!
+            executeDecryption(localPriv);
+        });
+
+        async function executeDecryption(privPem) {
+            try {
+                const cleanPrivPem = privPem.replace(/[\r\n\s]/g, '');
+                const binStr = window.atob(cleanPrivPem);
+                const bytes = new Uint8Array(binStr.length);
+                for (let i = 0; i < binStr.length; i++) { bytes[i] = binStr.charCodeAt(i); }
+                
+                const privateKey = await window.crypto.subtle.importKey(
+                    "pkcs8", bytes.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["decrypt"]
+                );
+
+                const dec = new TextDecoder();
+                const msgs = document.querySelectorAll('.e2e-msg');
+                
+                for(let msg of msgs) {
+                    const cipherText = msg.getAttribute('data-cipher');
+                    if (cipherText.length > 200 && /^[A-Za-z0-9+/=\s]+$/.test(cipherText)) {
+                        try {
+                            const cleanCipher = cipherText.replace(/[\r\n\s]/g, '');
+                            const cBinStr = window.atob(cleanCipher);
+                            const cBytes = new Uint8Array(cBinStr.length);
+                            for (let i = 0; i < cBinStr.length; i++) { cBytes[i] = cBinStr.charCodeAt(i); }
+                            
+                            const decrypted = await window.crypto.subtle.decrypt(
+                                { name: "RSA-OAEP" }, privateKey, cBytes.buffer
+                            );
+                            
+                            msg.innerHTML = dec.decode(decrypted).replace(/\n/g, '<br>');
+                            msg.style.color = "var(--t-green-dim)";
+                        } catch(e) {}
+                    }
+                }
+            } catch(err) {
+                console.error("Core Decryption Failed: ", err);
+            }
+        }
+
+        // ==========================================
+        // 💬 [ V5.6 TACTICAL QUOTE ENGINE ]
+        // ==========================================
+        function quoteMessage(btn, author) {
+            const container = btn.closest('.d-flex.flex-column');
+            const msgElement = container.querySelector('.e2e-msg');
+            const hasMedia = container.querySelector('.media-matrix') || container.querySelector('.audio-play-btn') || container.querySelector('.matrix-img') ? true : false;
+            
+            let originalText = msgElement.innerText.trim();
+            if (originalText.includes('DECRYPTING') || msgElement.getAttribute('data-cipher') === originalText) {
+                Terminal.toast('[!] CANNOT QUOTE ENCRYPTED TEXT', 'warning');
+                return;
+            }
+
+            let quoteBlock = `> [ TRANSMISI DARI: ${author} ]\n`;
+            if (originalText.length > 0) {
+                const lines = originalText.split('\n').map(line => `> ${line}`);
+                quoteBlock += lines.join('\n') + '\n';
+            }
+            if (hasMedia) {
+                quoteBlock += `> [ 📎 MEDIA_ATTACHED ]\n`;
+            }
+            
+            const input = document.getElementById('content-input');
+            input.value = quoteBlock + '\n' + input.value;
+            input.focus();
+            
+            if (input.value.length > 180) {
+                input.value = input.value.substring(0, 180); 
+            }
+            document.getElementById('char-counter').innerText = input.value.length + ' / 180 Bytes';
+            document.getElementById('reply-form').style.display = 'block';
         }
 
         // ==========================================
@@ -482,10 +670,12 @@ try {
             pttBtn.innerText = '[ 🎙️ HOLD_TO_TALK ]';
         }
 
-        pttBtn.addEventListener('mousedown', startRecording);
-        pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); }, {passive: false});
-        window.addEventListener('mouseup', stopRecording);
-        pttBtn.addEventListener('touchend', stopRecording);
+        if (pttBtn) {
+            pttBtn.addEventListener('mousedown', startRecording);
+            pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); }, {passive: false});
+            window.addEventListener('mouseup', stopRecording);
+            pttBtn.addEventListener('touchend', stopRecording);
+        }
 
         // ==========================================
         // 🗜️ [ MULTI-MEDIA COMPRESSOR MATRIX ]
@@ -616,7 +806,7 @@ try {
                 
                 try {
                     await fetch('core/transmitter.php', { method: 'POST', body: fireData });
-                } catch(e) { console.log('> Scorched earth dispatch failed'); }
+                } catch(e) {}
 
                 // 2. Purge Local Memory
                 const formData = new FormData();
@@ -633,58 +823,6 @@ try {
                 }
             }
         }
-
-        // ==========================================
-        // 🔐 THE DECRYPTOR (Read E2E Messages)
-        // ==========================================
-        window.addEventListener('DOMContentLoaded', async () => {
-            const serverEncPriv = "<?php echo $encrypted_privkey ?? ''; ?>";
-            const privPem = localStorage.getItem('relay_privkey');
-            
-            if (!privPem) {
-                if (serverEncPriv) {
-                    document.getElementById('vault-modal').style.display = 'flex';
-                }
-                return;
-            }
-
-            try {
-                const cleanPrivPem = privPem.replace(/[\r\n\s]/g, '');
-                const binStr = window.atob(cleanPrivPem);
-                const bytes = new Uint8Array(binStr.length);
-                for (let i = 0; i < binStr.length; i++) { bytes[i] = binStr.charCodeAt(i); }
-                
-                const privateKey = await window.crypto.subtle.importKey(
-                    "pkcs8", bytes.buffer, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["decrypt"]
-                );
-
-                const dec = new TextDecoder();
-                const msgs = document.querySelectorAll('.e2e-msg');
-                
-                for(let msg of msgs) {
-                    const cipherText = msg.getAttribute('data-cipher');
-                    if (cipherText.length > 200 && /^[A-Za-z0-9+/=\s]+$/.test(cipherText)) {
-                        try {
-                            const cleanCipher = cipherText.replace(/[\r\n\s]/g, '');
-                            const cBinStr = window.atob(cleanCipher);
-                            const cBytes = new Uint8Array(cBinStr.length);
-                            for (let i = 0; i < cBinStr.length; i++) { cBytes[i] = cBinStr.charCodeAt(i); }
-                            
-                            const decrypted = await window.crypto.subtle.decrypt(
-                                { name: "RSA-OAEP" }, privateKey, cBytes.buffer
-                            );
-                            
-                            msg.innerHTML = dec.decode(decrypted).replace(/\n/g, '<br>');
-                            msg.style.color = "var(--t-green-dim)";
-                        } catch(e) {
-                            console.log('Decryption skip: ', e);
-                        }
-                    }
-                }
-            } catch(err) {
-                console.error("Core Decryption Failed: ", err);
-            }
-        });
 
         // ==========================================
         // 🔐 THE ENCRYPTOR (Intercept Submission Form)

@@ -124,13 +124,12 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
 // 🚀 [ MAIN DASHBOARD PROCESSOR ]
 // ==========================================
 try {
-    // 🎛️ [ AJAX ENDPOINT: SAVE CONTROL ROOM ]
     if (isset($_POST['action']) && $_POST['action'] === 'save_control_room') {
         $name = trim($_POST['station_name'] ?? 'RELAY_STATION');
         $bio = trim($_POST['station_bio'] ?? '');
         $bunker = ($_POST['bunker_mode'] === '1') ? '1' : '0';
         $new_pass = trim($_POST['station_passcode'] ?? '');
-        $enc_priv = trim($_POST['encrypted_privkey'] ?? ''); // V5.6 Key Vault
+        $enc_priv = trim($_POST['encrypted_privkey'] ?? ''); 
         
         $db->prepare("DELETE FROM system_config WHERE config_key IN ('station_name', 'station_bio', 'bunker_mode')")->execute();
         
@@ -145,7 +144,6 @@ try {
             $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('captain_hash', ?)")->execute([$hash]);
         }
         
-        // Simpan gembok baru jika Passcode diubah oleh JS
         if (!empty($enc_priv)) {
             $db->prepare("DELETE FROM system_config WHERE config_key = 'encrypted_privkey'")->execute();
             $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('encrypted_privkey', ?)")->execute([$enc_priv]);
@@ -153,7 +151,6 @@ try {
         exit;
     }
 
-    // 🔐 [ AJAX ENDPOINT: SAVE PUBLIC KEY & ENCRYPTED VAULT ]
     if (isset($_POST['action']) && $_POST['action'] === 'save_keys') {
         $pubkey = trim($_POST['public_key'] ?? '');
         $enc_priv = trim($_POST['encrypted_privkey'] ?? '');
@@ -172,14 +169,12 @@ try {
         exit;
     }
     
-    // 🔥 [ AJAX ENDPOINT: LOCAL PURGE (V5.6) ]
     if (isset($_POST['action']) && $_POST['action'] === 'delete_local') {
         $id = (int)$_POST['id'];
         $db->prepare("DELETE FROM transmissions WHERE id = ? AND is_remote = 0")->execute([$id]);
         exit;
     }
     
-    // 🧹 [ ADVANCED GARBAGE COLLECTOR V3.0.2 ]
     $stmt_ghost = $db->query("SELECT media_url FROM transmissions WHERE expiry_date IS NOT NULL AND expiry_date <= CURRENT_TIMESTAMP AND media_url IS NOT NULL");
     $expired_ghosts = $stmt_ghost->fetchAll(PDO::FETCH_COLUMN);
     foreach ($expired_ghosts as $ghost_img) {
@@ -203,7 +198,6 @@ try {
     }
     $db->exec("DELETE FROM transmissions WHERE visibility = 'public' AND is_remote = 1 AND timestamp <= datetime('now', '-30 days')");
 
-    // 🔄 [ AJAX ENDPOINT: CURSOR-BASED PAGINATION ]
     if (isset($_GET['last_id'])) {
         $last_id = (int)$_GET['last_id'];
         $stmt = $db->prepare("SELECT * FROM transmissions WHERE visibility = 'public' AND id < :last_id ORDER BY id DESC LIMIT 15");
@@ -216,7 +210,6 @@ try {
             $src = $msg['is_remote'] ? 'INCOMING FROM:' : 'LOCAL_AUTHOR:';
             $content = nl2br(htmlspecialchars($msg['content']));
             
-            // 🗄️ V5.5 ADVANCED MEDIA MATRIX RENDERER (AJAX)
             $img = '';
             if (!empty($msg['media_url'])) {
                 $media_items = [];
@@ -272,7 +265,6 @@ try {
     $stmt_alerts = $db->query("SELECT * FROM alerts WHERE is_read = 0 ORDER BY id DESC");
     $active_alerts = $stmt_alerts->fetchAll(PDO::FETCH_ASSOC);
 
-    // 🎛️ FETCH SYSTEM CONFIGURATIONS
     $stmt_bunker = $db->query("SELECT config_value FROM system_config WHERE config_key = 'bunker_mode' ORDER BY rowid DESC LIMIT 1");
     $bunker_mode = $stmt_bunker->fetchColumn() ?: '0';
 
@@ -281,6 +273,13 @@ try {
 
     $stmt_bio = $db->query("SELECT config_value FROM system_config WHERE config_key = 'station_bio' ORDER BY rowid DESC LIMIT 1");
     $station_bio = $stmt_bio->fetchColumn() ?: '';
+
+    // 🔑 FETCH IDENTITY KEYS FOR VAULT SYNC
+    $stmt_key = $db->query("SELECT config_value FROM system_config WHERE config_key = 'encrypted_privkey' ORDER BY rowid DESC LIMIT 1");
+    $encrypted_privkey = $stmt_key ? $stmt_key->fetchColumn() : null;
+
+    $stmt_pub = $db->query("SELECT config_value FROM system_config WHERE config_key = 'public_key' ORDER BY rowid DESC LIMIT 1");
+    $server_pubkey = $stmt_pub ? $stmt_pub->fetchColumn() : null;
 
 } catch (PDOException $e) {
     die("<h3 class='t-alert danger'>[ CRITICAL ERROR ] Core Memory Data Fetch Failed.</h3>");
@@ -299,10 +298,8 @@ try {
     <link rel="manifest" href="manifest.json">
     <style>
         #installAppBtn { display: none; }
-        /* PTT Button specific styling */
         #ptt-btn { user-select: none; -webkit-user-select: none; touch-action: manipulation; }
         
-        /* V5.5 THE MATRIX GRID */
         .media-matrix { display: grid; gap: 8px; margin-top: 10px; }
         .media-matrix-1 { grid-template-columns: 1fr; }
         .media-matrix-2 { grid-template-columns: 1fr 1fr; }
@@ -325,6 +322,38 @@ try {
     <div id="splash-overlay" class="t-splash">
         <div class="font-bold text-success" id="splash-text" style="font-size: 1.1rem; letter-spacing: 2px; text-shadow: 0 0 8px currentColor;">
             > MOUNTING_PUBLIC_TIMELINE<span class="t-loading-dots"></span>
+        </div>
+    </div>
+
+    <div id="vault-modal" class="t-splash" style="display:none; z-index: 2000; background: rgba(0,0,0,0.9); flex-direction: column; justify-content: center; align-items: center;">
+        <div class="t-card warning" style="width: 90%; max-width: 400px; border-color: var(--t-yellow);">
+            <div class="t-card-header text-warning font-bold">> 🔐 IDENTITY VAULT DETECTED</div>
+            <div class="p-3 text-center">
+                <p class="fs-small text-muted mb-3">> Your local identity is missing or out of sync. Enter your Master Passcode to securely decrypt and restore your identity from the server.</p>
+                <input type="password" id="vault-passcode" class="t-input text-center font-bold mb-3" placeholder="MASTER PASSCODE">
+                <button onclick="triggerVaultUnlock()" class="t-btn warning w-100 font-bold t-glow">[ RESTORE IDENTITY ]</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="vault-setup-modal" class="t-splash" style="display:none; z-index: 2000; background: rgba(0,0,0,0.9); flex-direction: column; justify-content: center; align-items: center;">
+        <div class="t-card success" style="width: 90%; max-width: 400px; border-color: var(--t-green);">
+            <div class="t-card-header text-success font-bold">> 🔐 IDENTITY VAULT SETUP</div>
+            <div class="p-3 text-center">
+                <p class="fs-small text-muted mb-3">> Your E2E keys are active but NOT backed up. To enable multi-device sync, enter your Master Passcode to lock and backup your keys to the server vault.</p>
+                <input type="password" id="vault-setup-passcode" class="t-input text-center font-bold mb-3" placeholder="MASTER PASSCODE">
+                <button onclick="triggerVaultSetup()" class="t-btn success w-100 font-bold t-glow">[ SECURE IDENTITY ]</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="split-brain-modal" class="t-splash" style="display:none; z-index: 2000; background: rgba(0,0,0,0.9); flex-direction: column; justify-content: center; align-items: center;">
+        <div class="t-card danger" style="width: 90%; max-width: 400px; border-color: var(--t-red);">
+            <div class="t-card-header text-danger font-bold">> 🚨 CRITICAL SYNC ERROR</div>
+            <div class="p-3 text-center">
+                <p class="fs-small text-muted mb-3">> Another device claims this node's identity but failed to backup the Vault. <br><br><strong>Action Required:</strong> Go to the device that created the keys and setup the vault. OR, permanently overwrite the server identity here.</p>
+                <button onclick="forceRebuildIdentity()" class="t-btn danger w-100 font-bold t-glow">[ DESTROY & REBUILD KEYS ]</button>
+            </div>
         </div>
     </div>
 
@@ -611,7 +640,7 @@ try {
     <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
         // ==========================================
-        // 🔐 [ V5.6 THE ENCRYPTED KEY VAULT (ENGINE) ]
+        // 🔐 [ V5.6 THE ENCRYPTED KEY VAULT (ENGINE & DECRYPTOR) ]
         // ==========================================
         async function encryptVault(privPem, passcode) {
             const enc = new TextEncoder();
@@ -632,50 +661,156 @@ try {
             return `${saltB64}:${ivB64}:${cipherB64}`;
         }
 
+        async function triggerVaultUnlock() {
+            const passcode = document.getElementById('vault-passcode').value;
+            if(!passcode) return;
+            
+            const vaultData = "<?php echo $encrypted_privkey ?? ''; ?>";
+            const pubKey = "<?php echo $server_pubkey ?? ''; ?>";
+            if (!vaultData) return;
+
+            document.getElementById('vault-passcode').disabled = true;
+            document.getElementById('vault-passcode').placeholder = "DECRYPTING VAULT...";
+
+            try {
+                const parts = vaultData.split(':');
+                const salt = Uint8Array.from(atob(parts[0]), c => c.charCodeAt(0));
+                const iv = Uint8Array.from(atob(parts[1]), c => c.charCodeAt(0));
+                const cipher = Uint8Array.from(atob(parts[2]), c => c.charCodeAt(0));
+
+                const enc = new TextEncoder();
+                const keyMaterial = await window.crypto.subtle.importKey(
+                    "raw", enc.encode(passcode), {name: "PBKDF2"}, false, ["deriveKey"]
+                );
+                
+                const key = await window.crypto.subtle.deriveKey(
+                    {name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256"},
+                    keyMaterial, {name: "AES-GCM", length: 256}, false, ["decrypt"]
+                );
+
+                const decrypted = await window.crypto.subtle.decrypt({name: "AES-GCM", iv: iv}, key, cipher);
+                const privPem = new TextDecoder().decode(decrypted);
+
+                localStorage.setItem('relay_privkey', privPem);
+                localStorage.setItem('relay_pubkey', pubKey);
+
+                document.getElementById('vault-modal').style.display='none';
+                Terminal.toast('[✓] IDENTITY RESTORED SUCCESSFULLY', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } catch (e) {
+                document.getElementById('vault-passcode').disabled = false;
+                document.getElementById('vault-passcode').value = '';
+                document.getElementById('vault-passcode').placeholder = "MASTER PASSCODE";
+                Terminal.toast('[!] INVALID PASSCODE OR CORRUPTED VAULT', 'danger');
+            }
+        }
+
+        async function triggerVaultSetup() {
+            const pc = document.getElementById('vault-setup-passcode').value;
+            if (!pc) return;
+            document.getElementById('vault-setup-passcode').disabled = true;
+
+            const privPem = localStorage.getItem('relay_privkey');
+            const pubPem = localStorage.getItem('relay_pubkey');
+            if (!privPem) return;
+
+            try {
+                const encPriv = await encryptVault(privPem, pc);
+                const formData = new FormData();
+                formData.append('action', 'save_keys');
+                formData.append('public_key', pubPem);
+                formData.append('encrypted_privkey', encPriv);
+
+                await fetch('console.php', { method: 'POST', body: formData });
+                document.getElementById('vault-setup-modal').style.display = 'none';
+                Terminal.toast('[✓] IDENTITY VAULT SECURED', 'success');
+            } catch(e) {
+                document.getElementById('vault-setup-passcode').disabled = false;
+                Terminal.toast('[!] VAULT ENCRYPTION FAILED', 'danger');
+            }
+        }
+
+        async function forceRebuildIdentity() {
+            if (confirm("> WARNING: This will permanently destroy the current identity on the server and create a new one. All previous encrypted messages will become unreadable. Proceed?")) {
+                document.getElementById('split-brain-modal').style.display = 'none';
+                await forgeQuantumKeys();
+                document.getElementById('vault-setup-modal').style.display = 'flex';
+            }
+        }
+
+        async function forgeQuantumKeys() {
+            Terminal.splash.show('> FORGING_QUANTUM_KEYS...');
+            try {
+                const keyPair = await window.crypto.subtle.generateKey(
+                    { name: "RSA-OAEP", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+                    true, ["encrypt", "decrypt"]
+                );
+
+                const exportKey = async (key, type) => {
+                    const exported = await window.crypto.subtle.exportKey(type, key);
+                    return window.btoa(String.fromCharCode.apply(null, new Uint8Array(exported)));
+                };
+
+                const pubPem = await exportKey(keyPair.publicKey, "spki");
+                const privPem = await exportKey(keyPair.privateKey, "pkcs8");
+
+                localStorage.setItem('relay_pubkey', pubPem);
+                localStorage.setItem('relay_privkey', privPem);
+
+                const formData = new FormData();
+                formData.append('action', 'save_keys');
+                formData.append('public_key', pubPem);
+                await fetch('console.php', { method: 'POST', body: formData });
+
+                Terminal.splash.hide();
+            } catch (err) {
+                Terminal.splash.hide();
+                Terminal.toast('[!] KEY GENERATION FAILED', 'danger');
+            }
+        }
+
+        // ==========================================
+        // 🧠 [ THE STATE MACHINE: SYNC ENFORCER ]
+        // ==========================================
         window.addEventListener('DOMContentLoaded', async () => {
-            if (!localStorage.getItem('relay_privkey') || !localStorage.getItem('relay_pubkey')) {
-                Terminal.splash.show('> FORGING_QUANTUM_KEYS...');
-                try {
-                    const keyPair = await window.crypto.subtle.generateKey(
-                        { name: "RSA-OAEP", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
-                        true, ["encrypt", "decrypt"]
-                    );
+            const serverEncPriv = "<?php echo $encrypted_privkey ?? ''; ?>";
+            const serverPubKey = "<?php echo $server_pubkey ?? ''; ?>";
+            const localPriv = localStorage.getItem('relay_privkey');
+            const localPub = localStorage.getItem('relay_pubkey');
+            
+            // 1. New Device (No Local Keys)
+            if (!localPriv || !localPub) {
+                if (serverEncPriv) {
+                    // Server has a valid vault. Force user to unlock it.
+                    document.getElementById('vault-modal').style.display = 'flex';
+                    return;
+                } else if (serverPubKey) {
+                    // Split Brain: Server has keys, but no vault backup!
+                    document.getElementById('split-brain-modal').style.display = 'flex';
+                    return;
+                } else {
+                    // Brand new station. Forge keys and force vault setup.
+                    await forgeQuantumKeys();
+                    document.getElementById('vault-setup-modal').style.display = 'flex';
+                    return;
+                }
+            }
 
-                    const exportKey = async (key, type) => {
-                        const exported = await window.crypto.subtle.exportKey(type, key);
-                        return window.btoa(String.fromCharCode.apply(null, new Uint8Array(exported)));
-                    };
-
-                    const pubPem = await exportKey(keyPair.publicKey, "spki");
-                    const privPem = await exportKey(keyPair.privateKey, "pkcs8");
-
-                    localStorage.setItem('relay_pubkey', pubPem);
-                    localStorage.setItem('relay_privkey', privPem);
-
-                    Terminal.splash.hide();
-                    
-                    // Secure Vault Setup
-                    setTimeout(async () => {
-                        const formData = new FormData();
-                        formData.append('action', 'save_keys');
-                        formData.append('public_key', pubPem);
-
-                        const pc = prompt("> 🔐 IDENTITY VAULT SETUP\nTo sync this device's identity with your other devices, enter your Master Passcode to lock your Private Key in the server vault:\n(Cancel to skip)");
-                        if (pc) {
-                            try {
-                                const encPriv = await encryptVault(privPem, pc);
-                                formData.append('encrypted_privkey', encPriv);
-                            } catch(e) { console.error("Vault encryption failed", e); }
-                        }
-                        
-                        await fetch('console.php', { method: 'POST', body: formData });
-                        Terminal.toast('[✓] E2E KEYS FORGED SUCCESSFULLY', 'success');
-                    }, 500);
-
-                } catch (err) {
-                    console.error(err);
-                    Terminal.splash.hide();
-                    Terminal.toast('[!] KEY GENERATION FAILED', 'danger');
+            // 2. Existing Device (Has Local Keys)
+            if (localPriv && localPub) {
+                if (serverPubKey && localPub !== serverPubKey) {
+                    // Keys out of sync!
+                    if (serverEncPriv) {
+                        document.getElementById('vault-modal').style.display = 'flex';
+                        return;
+                    } else {
+                        document.getElementById('split-brain-modal').style.display = 'flex';
+                        return;
+                    }
+                } else if (!serverEncPriv) {
+                    // Keys are in sync, but NOT backed up to the vault!
+                    document.getElementById('vault-setup-modal').style.display = 'flex';
+                    return;
                 }
             }
         });
@@ -711,7 +846,6 @@ try {
                 const container = btn.closest('.transmission-card');
                 const rawContent = container.getAttribute('data-raw-content');
                 
-                // 1. Fire Global Purge to allies
                 const fireData = new FormData();
                 fireData.append('visibility', 'global_purge');
                 fireData.append('content', rawContent); 
@@ -719,7 +853,6 @@ try {
                     await fetch('core/transmitter.php', { method: 'POST', body: fireData });
                 } catch(e) {}
 
-                // 2. Delete Locally
                 const delData = new FormData();
                 delData.append('action', 'delete_local');
                 delData.append('id', msgId);
@@ -922,11 +1055,7 @@ try {
                 
                 for(let i=0; i < processCount; i++) {
                     const file = files[i];
-                    
-                    if(file.type.startsWith('video/') || file.type.startsWith('audio/')) {
-                        continue; 
-                    }
-                    
+                    if(file.type.startsWith('video/') || file.type.startsWith('audio/')) { continue; }
                     if(file.type.startsWith('image/')) {
                         const b64 = await compressImage(file);
                         processedBase64Array.push(b64);
