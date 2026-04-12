@@ -22,6 +22,8 @@ Relay Station is designed to be extremely lightweight and can be hosted on a $1/
 
 * **100% Data Sovereignty:** You own the server, the database, and the media. There is no central database.
 * **Constellation Star Chart (P2P Following):** Connect to other Relay nodes simply by adding their URL. The system automatically validates the target node and prevents echo chambers via built-in Anti-Self Loop protocols.
+* **The Quantum Gate:** Silky smooth, zero-reload authentication. Your Master Passcode decrypts your Vault and logs you in simultaneously in milliseconds.
+* **The Lighthouse Protocol:** An opt-in headless directory. Transmit your coordinates to a central beacon to be discovered organically, or stay completely hidden.
 * **The Handshake Protocol (Smart Alerts):** When a foreign node locks onto your coordinates or sends a Laser Link, your console's alert system will notify you, allowing for seamless one-click mutual connections without sacrificing your firewall.
 * **Public Hologram & E2E Laser Links:** Broadcast messages to the public timeline, or send target-specific Direct Messages (Laser Links) secured by native RSA-OAEP 2048-bit End-to-End Encryption.
 * **The Encrypted Key Vault (Multi-Device):** Seamlessly login across multiple devices. Your E2E Private Key is secured on the server using AES-GCM encryption, unlocked only by your Master Passcode in the browser.
@@ -61,7 +63,7 @@ Relay Station is built on a pure **Peer-to-Peer (P2P) Distributed Architecture**
 4.  **Censorship Resistant:** No algorithm, no shadow-banning, and no central moderation. You only receive data from the nodes you explicitly trust and follow.
 
 ### The Limitations (Cons)
-1.  **The "Dark Universe" Concept (No Discovery):** Because there is no central tracker, there is no global "explore" page. You cannot search for users. You must know the exact URL of another Relay Station to connect with them.
+1.  **Optional Discovery:** Because there is no central tracker by default, there is no global "explore" page. However, you can explicitly opt-in to *The Lighthouse Protocol* to list your node in a public directory, or remain entirely hidden in Bunker Mode and share your URL manually.
 2.  **Eventual Consistency:** This is not a real-time WebSocket chat app. Signals are fired via asynchronous HTTP requests (cURL). It may take a few seconds for a message to propagate across a large constellation.
 3.  **Storage Responsibility:** While the Garbage Collector helps delete old public messages and Ghost Protocol media, permanent media storage relies entirely on your own server's capacity.
 4.  **Trust-Based Network:** If a node you follow starts broadcasting spam, your only defense is to manually trigger the **Disconnect Protocol** (Unfollow). 

@@ -1,7 +1,7 @@
 {
-    "version": "5.6",
-    "codename": "Scorched Earth",
+    "version": "6.0",
+    "codename": "The Sovereign Update",
     "status": "stable",
-    "changelog": "THE FINAL V5 RELEASE (v5.6):\n- [SECURITY] The Encrypted Key Vault: Multi-device E2E synchronization using AES-GCM. Private keys are securely locked with the Master Passcode on the server.\n- [SYSTEM] Scorched Earth Protocol: Send a silent missile to permanently wipe Direct Message history on both local and target remote nodes simultaneously.\n- [SYSTEM] Global Purge: Completely erase a specific public broadcast from the local timeline and automatically wipe it from all allied Star Chart nodes.\n- [UI] Tactical Quote: Securely quote incoming text messages in both Public and Direct channels without breaking media references.\n- [FIX] API Gateway: Fixed a fatal CORS preflight execution order in `api_ping.php` and removed aggressive string sanitization in `api_inbox.php` that previously destroyed JSON Grid Gallery arrays.",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v5.6/Relay-OTA-Update-v5.6.zip"
+    "changelog": "THE SOVEREIGN UPDATE (v6.0):\n- [SYSTEM] The Quantum Gate: Completely rebuilt authentication. Silky smooth AJAX login that intercepts your Master Passcode, decrypts your E2E Vault, and logs you in simultaneously in milliseconds without page reloads.\n- [SYSTEM] The Lighthouse Protocol: An opt-in headless directory. Transmit your coordinates to a central beacon to be discovered organically, or stay completely hidden in Bunker Mode.\n- [UI] Control Room: Fixed checkbox alignment issues on mobile devices for Bunker Mode and Lighthouse Protocol toggles.",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v6.0/Relay-OTA-Update-v6.0.zip"
 }
