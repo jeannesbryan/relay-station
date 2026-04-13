@@ -50,14 +50,14 @@ To prevent your SQLite database from locking up due to heavy bombardment or brut
 
 ---
 
-## 🔴 3. Bot Fight Mode & Security Level
-Cloudflare's Bot Fight Mode throws JS challenges to suspicious visitors. If the global security level is too aggressive, your human friends won't be able to load your Public Hologram (Timeline) without getting stuck on a loading screen.
+## 🔴 3. Bot Fight Mode & Security Settings
+Cloudflare automatically protects your domain, but throwing manual JS challenges or "Under Attack" modes can severely disrupt the E2E P2P network.
 
 **Action:**
 1. Go to **Security** > **Bots**.
 2. Ensure **Bot Fight Mode** is toggled **ON** to block actual malicious scrapers.
 3. Then, go to **Security** > **Settings** on the left sidebar.
-4. Ensure your **Security Level** is set to **Medium**. *(Do not use "I'm Under Attack!" unless you are actively being targeted, as it will completely sever P2P machine communications).*
+4. Under the **Configurations** section, ensure that **I'm under attack mode** is **Disabled**. *(Do not enable this unless you are actively being targeted by a massive DDoS attack, as it will completely sever P2P machine communications).*
 
 ---
 
