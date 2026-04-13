@@ -40,8 +40,8 @@ To prevent your SQLite database from locking up due to heavy bombardment or brut
    * Value: `/console.php`
 5. Under **With the same characteristics**, select `IP`.
 6. Under **When rate exceeds**, set it to:
-   * Requests: `30`
-   * Period: `1 minute`
+   * Requests: `10`
+   * Period: `10 seconds`
 7. Under **Then... (Choose action)**, select **Block** (or **Managed Challenge**).
 8. Deploy the rule.
 
