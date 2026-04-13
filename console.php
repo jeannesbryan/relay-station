@@ -266,28 +266,36 @@ try {
         }
 
         // 🗼 THE LIGHTHOUSE FIRE PROTOCOL (PHP Side)
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+        $host = $_SERVER['HTTP_HOST'];
+        $base_path = dirname($_SERVER['SCRIPT_NAME']);
+        if ($base_path === '\\' || $base_path === '/') $base_path = '';
+        $my_planet_url = rtrim($protocol . $host . $base_path, '/');
+        
+        // Cek apakah mengirim sinyal Ping atau Kill Signal
+        $ping_data = '';
         if ($lighthouse === '1') {
-            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
-            $host = $_SERVER['HTTP_HOST'];
-            $base_path = dirname($_SERVER['SCRIPT_NAME']);
-            if ($base_path === '\\' || $base_path === '/') $base_path = '';
-            $my_planet_url = rtrim($protocol . $host . $base_path, '/');
-            
             $ping_data = json_encode([
+                'action' => 'ping',
                 'planet_url' => $my_planet_url,
                 'station_name' => $name,
                 'station_bio' => $bio
             ]);
-            
-            $ch = curl_init('https://emptyhub.my.id/api_register.php');
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $ping_data);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 3); // Timeout cepat agar save tidak lemot
-            @curl_exec($ch);
-            @curl_close($ch);
+        } else {
+            $ping_data = json_encode([
+                'action' => 'kill',
+                'planet_url' => $my_planet_url
+            ]);
         }
+        
+        $ch = curl_init('https://relay.emptyhub.my.id/api_register.php');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $ping_data);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 3); // Timeout cepat agar save tidak lemot
+        @curl_exec($ch);
+        @curl_close($ch);
 
         exit;
     }
@@ -910,10 +918,11 @@ try {
                 const stationNameStr = "<?php echo addslashes($station_name); ?>";
                 const stationBioStr = "<?php echo addslashes($station_bio); ?>";
                 
-                fetch('https://emptyhub.my.id/api_register.php', {
+                fetch('https://relay.emptyhub.my.id/api_register.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        action: 'ping',
                         planet_url: planetUrlStr,
                         station_name: stationNameStr,
                         station_bio: stationBioStr

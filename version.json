@@ -1,7 +1,7 @@
 {
-    "version": "6.0",
-    "codename": "The Sovereign Update",
+    "version": "6.1",
+    "codename": "The Aegis Protocol",
     "status": "stable",
-    "changelog": "THE SOVEREIGN UPDATE (v6.0):\n- [SYSTEM] The Quantum Gate: Completely rebuilt authentication. Silky smooth AJAX login that intercepts your Master Passcode, decrypts your E2E Vault, and logs you in simultaneously in milliseconds without page reloads.\n- [SYSTEM] The Lighthouse Protocol: An opt-in headless directory. Transmit your coordinates to a central beacon to be discovered organically, or stay completely hidden in Bunker Mode.\n- [UI] Control Room: Fixed checkbox alignment issues on mobile devices for Bunker Mode and Lighthouse Protocol toggles.",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v6.0/Relay-OTA-Update-v6.0.zip"
+    "changelog": "THE AEGIS PROTOCOL (v6.1):\n- [SECURITY] True Rate Limiting: Embedded IP-based rate limiting in Lighthouse API to prevent SQLite database locks and DDoS.\n- [SYSTEM] The Kill Signal: Opting out of the Lighthouse now instantly vaporizes your node from the global directory in real-time.\n- [DOCS] WAF Defense Guide: Added official SECURITY.md for deploying Cloudflare WAF shields without blocking P2P organic traffic.",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v6.1/Relay-OTA-Update-v6.1.zip"
 }
