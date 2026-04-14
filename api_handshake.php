@@ -1,9 +1,9 @@
 <?php
 require_once 'core/ssl_shield.php';
 // ==========================================
-// 🤝 RELAY STATION: HANDSHAKE PROTOCOL (V6.2)
+// 🤝 RELAY STATION: HANDSHAKE PROTOCOL (V7.0)
 // Receives a signal that a foreign station has just followed this node.
-// Now captures Symmetric Handshake Tokens for Anti-Spoofing.
+// Captures Symmetric Handshake Tokens and triggers The Oracle (Telegram).
 // ==========================================
 
 header('Content-Type: application/json');
@@ -27,8 +27,9 @@ if (!$data || empty($data['from_planet'])) {
 $from_planet = trim($data['from_planet']);
 $handshake_token = $data['handshake_token'] ?? null; // [ NEW V6.2 ] Tangkap token rahasia
 
-// 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
+// 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) & THE ORACLE ]
 require_once 'core/db_connect.php';
+require_once 'core/telegram.php'; // [ NEW V7.0 ]
 
 try {
     // Ensure URL is valid
@@ -65,6 +66,9 @@ try {
         // Insert into alerts (Sisipkan juga token di payload untuk rekam jejak)
         $stmt = $db->prepare("INSERT INTO alerts (type, from_planet, payload, is_read) VALUES ('new_follower', :url, :payload, 0)");
         $stmt->execute([':url' => $from_planet, ':payload' => $handshake_token]);
+
+        // 👁️ [ V7.0 THE ORACLE: NEW FOLLOWER ALERT ]
+        sendTelegramAlert("🤝 *NEW FOLLOWER DETECTED*\nStation `" . $from_planet . "` has locked onto your coordinates.\nLogin to follow back.");
     }
 
     http_response_code(200);

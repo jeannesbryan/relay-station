@@ -43,6 +43,28 @@ try {
         error_log("[ MIGRATION V6.2 INFO ] " . $e->getMessage());
     }
 
+    // ==========================================
+    // 👁️ [ V7.0 ] THE ORACLE UPDATE
+    // Menyiapkan slot konfigurasi default untuk Telegram Webhooks
+    // ==========================================
+    try {
+        $db_upgrade->exec("INSERT OR IGNORE INTO system_config (config_key, config_value) VALUES ('telegram_enabled', '0')");
+    } catch (Exception $e) {
+        error_log("[ MIGRATION V7.0 INFO ] " . $e->getMessage());
+    }
+
+    try {
+        $db_upgrade->exec("INSERT OR IGNORE INTO system_config (config_key, config_value) VALUES ('telegram_bot_token', '')");
+    } catch (Exception $e) {
+        error_log("[ MIGRATION V7.0 INFO ] " . $e->getMessage());
+    }
+
+    try {
+        $db_upgrade->exec("INSERT OR IGNORE INTO system_config (config_key, config_value) VALUES ('telegram_chat_id', '')");
+    } catch (Exception $e) {
+        error_log("[ MIGRATION V7.0 INFO ] " . $e->getMessage());
+    }
+
 } catch (Exception $e) {
     // Fatal error jika database gagal diakses sama sekali
     error_log("[ MIGRATION FATAL ERROR ] " . $e->getMessage());

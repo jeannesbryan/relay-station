@@ -37,8 +37,9 @@ if (file_exists('version.json')) {
     }
 }
 
-// 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
+// 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) & THE ORACLE ]
 require_once 'core/db_connect.php';
+require_once 'core/telegram.php'; // [ NEW V7.0 ] Inject Telegram Engine
 
 // ==========================================
 // 🛡️ ANTI-BRUTE FORCE LOCKOUT PROTOCOL
@@ -87,6 +88,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_login'])) {
             $db->prepare("DELETE FROM login_attempts WHERE ip_address = :ip")->execute([':ip' => $user_ip]);
         }
         $_SESSION['relay_auth'] = true;
+        
+        // 👁️ [ V7.0 THE ORACLE: LOGIN ALERT ]
+        sendTelegramAlert("✅ *COMMANDER LOGIN DETECTED*\nAccess granted to Control Room.\nIP Address: `" . $user_ip . "`");
+
         echo json_encode(['status' => 'success']); 
         exit;
     } else { 
@@ -96,6 +101,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_login'])) {
                 $lock_time = date('Y-m-d H:i:s', strtotime('+15 minutes'));
                 $stmt = $db->prepare("UPDATE login_attempts SET attempts = :attempts, lockout_until = :lock_time WHERE ip_address = :ip");
                 $stmt->execute([':attempts' => $attempts, ':lock_time' => $lock_time, ':ip' => $user_ip]);
+                
+                // 👁️ [ V7.0 THE ORACLE: BRUTE-FORCE ALERT ]
+                sendTelegramAlert("🚨 *SECURITY BREACH ATTEMPT*\nRadar frozen for 15 minutes due to multiple failed logins.\nIP Address: `" . $user_ip . "`");
+
                 echo json_encode(['status' => 'error', 'message' => "SYSTEM LOCKED. WAIT 15 MINUTE(S)."]); 
                 exit;
             } else {
@@ -261,12 +270,10 @@ try {
         $new_url = trim($_POST['new_url']);
         $old_url = trim($_POST['old_url']);
         
-        // 1. Update Core Memory Local URL
         $db->prepare("DELETE FROM system_config WHERE config_key = 'local_planet_url'")->execute();
         $stmt = $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('local_planet_url', :val)");
         $stmt->execute([':val' => $new_url]);
 
-        // 2. Fire Re-Sync Pulse to all followers & following
         $following = $db->query("SELECT planet_url, handshake_token FROM following WHERE handshake_token IS NOT NULL")->fetchAll(PDO::FETCH_ASSOC);
         foreach ($following as $node) {
             $payload = json_encode([
@@ -296,13 +303,21 @@ try {
         $new_pass = trim($_POST['station_passcode'] ?? '');
         $enc_priv = trim($_POST['encrypted_privkey'] ?? ''); 
         
-        $db->prepare("DELETE FROM system_config WHERE config_key IN ('station_name', 'station_bio', 'bunker_mode', 'lighthouse_opt')")->execute();
+        // 👁️ [ V7.0 THE ORACLE: CONFIGS ]
+        $tel_enabled = ($_POST['telegram_enabled'] === '1') ? '1' : '0';
+        $tel_token = trim($_POST['telegram_bot_token'] ?? '');
+        $tel_chat = trim($_POST['telegram_chat_id'] ?? '');
+
+        $db->prepare("DELETE FROM system_config WHERE config_key IN ('station_name', 'station_bio', 'bunker_mode', 'lighthouse_opt', 'telegram_enabled', 'telegram_bot_token', 'telegram_chat_id')")->execute();
         
         $stmt = $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES (?, ?)");
         $stmt->execute(['station_name', $name]);
         $stmt->execute(['station_bio', $bio]);
         $stmt->execute(['bunker_mode', $bunker]);
         $stmt->execute(['lighthouse_opt', $lighthouse]);
+        $stmt->execute(['telegram_enabled', $tel_enabled]);
+        $stmt->execute(['telegram_bot_token', $tel_token]);
+        $stmt->execute(['telegram_chat_id', $tel_chat]);
 
         if (!empty($new_pass)) {
             $hash = password_hash($new_pass, PASSWORD_DEFAULT);
@@ -313,6 +328,11 @@ try {
         if (!empty($enc_priv)) {
             $db->prepare("DELETE FROM system_config WHERE config_key = 'encrypted_privkey'")->execute();
             $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('encrypted_privkey', ?)")->execute([$enc_priv]);
+        }
+
+        // 👁️ [ V7.0 THE ORACLE: TEST PING ]
+        if ($tel_enabled === '1') {
+            sendTelegramAlert("> ORACLE SYSTEM ONLINE. Radar is active.");
         }
 
         // 🗼 THE LIGHTHOUSE FIRE PROTOCOL (PHP Side)
@@ -482,6 +502,16 @@ try {
 
     $stmt_pub = $db->query("SELECT config_value FROM system_config WHERE config_key = 'public_key' ORDER BY rowid DESC LIMIT 1");
     $server_pubkey = $stmt_pub ? $stmt_pub->fetchColumn() : null;
+
+    // 👁️ [ V7.0 THE ORACLE: FETCH CONFIGS ]
+    $stmt_tel_en = $db->query("SELECT config_value FROM system_config WHERE config_key = 'telegram_enabled' ORDER BY rowid DESC LIMIT 1");
+    $telegram_enabled = $stmt_tel_en ? $stmt_tel_en->fetchColumn() : '0';
+
+    $stmt_tel_tok = $db->query("SELECT config_value FROM system_config WHERE config_key = 'telegram_bot_token' ORDER BY rowid DESC LIMIT 1");
+    $telegram_bot_token = $stmt_tel_tok ? $stmt_tel_tok->fetchColumn() : '';
+
+    $stmt_tel_chat = $db->query("SELECT config_value FROM system_config WHERE config_key = 'telegram_chat_id' ORDER BY rowid DESC LIMIT 1");
+    $telegram_chat_id = $stmt_tel_chat ? $stmt_tel_chat->fetchColumn() : '';
 
     // 🌐 [ V6.2 ] THE NOMADIC RE-SYNC RADAR (DETECT DOMAIN CHANGE)
     $stmt_local = $db->query("SELECT config_value FROM system_config WHERE config_key = 'local_planet_url' ORDER BY rowid DESC LIMIT 1");
@@ -851,6 +881,21 @@ try {
                         </div>
                     </div>
 
+                    <div class="mb-3 t-card p-2" style="border-color: var(--t-green); background: rgba(0,255,65,0.05);">
+                        <span class="font-bold text-success">> THE ORACLE: TELEGRAM BOT</span>
+                        <div class="mt-2 fs-small text-muted">
+                            > Enable real-time radar alerts to your smartphone. Read `TELEGRAM.md` for the setup guide.
+                            <input type="checkbox" id="cr-telegram-enabled" value="1" <?php echo ($telegram_enabled == '1') ? 'checked' : ''; ?> style="vertical-align: middle; cursor: pointer; margin-left: 5px;">
+                        </div>
+                        <div id="telegram-settings" style="display: <?php echo ($telegram_enabled == '1') ? 'block' : 'none'; ?>; margin-top: 15px;">
+                            <label class="t-form-label fs-small">> BOT_TOKEN</label>
+                            <input type="text" id="cr-telegram-token" class="t-input mb-3" style="font-size: 11px;" value="<?php echo htmlspecialchars($telegram_bot_token); ?>" placeholder="1234567890:ABCDefGhIjKlMnOpQrStUvWxYz">
+                            
+                            <label class="t-form-label fs-small">> CHAT_ID</label>
+                            <input type="text" id="cr-telegram-chatid" class="t-input" style="font-size: 11px;" value="<?php echo htmlspecialchars($telegram_chat_id); ?>" placeholder="123456789">
+                        </div>
+                    </div>
+
                     <div class="mb-4">
                         <label class="t-form-label">> CHANGE_MASTER_PASSCODE</label>
                         <input type="password" id="cr-passcode" class="t-input" placeholder="> Leave blank to keep current passcode...">
@@ -885,6 +930,17 @@ try {
 
     <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
+        // ==========================================
+        // 👁️ [ V7.0 THE ORACLE: UI TOGGLE ]
+        // ==========================================
+        const telCheckbox = document.getElementById('cr-telegram-enabled');
+        const telSettings = document.getElementById('telegram-settings');
+        if(telCheckbox && telSettings) {
+            telCheckbox.addEventListener('change', function() {
+                telSettings.style.display = this.checked ? 'block' : 'none';
+            });
+        }
+
         // ==========================================
         // 🔐 [ V5.6 THE ENCRYPTED KEY VAULT (ENGINE & DECRYPTOR) ]
         // ==========================================
@@ -1095,6 +1151,11 @@ try {
                 const isLighthouse = document.getElementById('cr-lighthouse').checked ? '1' : '0';
                 const newPass = document.getElementById('cr-passcode').value;
                 
+                // 👁️ [ V7.0 THE ORACLE: INPUT CAPTURE ]
+                const isTelegram = document.getElementById('cr-telegram-enabled').checked ? '1' : '0';
+                const telToken = document.getElementById('cr-telegram-token').value;
+                const telChatId = document.getElementById('cr-telegram-chatid').value;
+                
                 const formData = new FormData();
                 formData.append('action', 'save_control_room');
                 formData.append('station_name', newName);
@@ -1102,6 +1163,10 @@ try {
                 formData.append('bunker_mode', isBunker);
                 formData.append('lighthouse_opt', isLighthouse);
                 formData.append('station_passcode', newPass);
+                
+                formData.append('telegram_enabled', isTelegram);
+                formData.append('telegram_bot_token', telToken);
+                formData.append('telegram_chat_id', telChatId);
 
                 if (newPass) {
                     const privPem = localStorage.getItem('relay_privkey');

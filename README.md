@@ -21,6 +21,7 @@ Relay Station is designed to be extremely lightweight and can be hosted on a $1/
 ## 🚀 Core Capabilities & Features
 
 * **100% Data Sovereignty:** You own the server, the database, and the media. There is no central database.
+* **The Oracle (Real-Time Alerts):** Securely integrate a private Telegram Bot to act as your station's Early Warning System. Receive instant tactical notifications for incoming Laser Links, Sonar Pulses, follower handshakes, and security alerts even when your browser is closed.
 * **Constellation Star Chart (P2P Following):** Connect to other Relay nodes simply by adding their URL. The system automatically validates the target node and prevents echo chambers via built-in Anti-Self Loop protocols.
 * **The Nomadic Protocol (Token Re-Sync):** Absolute domain independence. If your server dies, move your SQLite database to a new domain. Your station will automatically fire a cryptographic Re-Sync pulse to update your URL across all allied nodes instantly.
 * **The Escape Pod (Data Portability):** A one-click emergency export of your core memory (SQLite database) directly from the Control Room for safe, seamless migrations.
@@ -83,12 +84,13 @@ Relay Station utilizes a highly secure **Drop-Pod Installation** method.
 5. The system will extract the core files, build the SQLite database, secure the data directories, and **automatically delete the installer files** to prevent unauthorized access.
 
 ### Updating the Station
-When a new version is available, you do not need to download anything manually. Simply click the **`[ SYS_UPDATE ]`** button inside your Relay Console to initiate the Over-The-Air patch.
+When a new version is available, you do not need to download anything manually. Simply click the **`[ SYS_UPDATE ]`** button inside your Relay Console to initiate the Over-The-Air patch. For Telegram notifications setup, please refer to [TELEGRAM.md](TELEGRAM.md).
 
 ---
 
 ## 🛡️ Security Systems
 
+* **The Oracle Sentinel:** Real-time Telegram alerts for successful Commander logins and anti-brute force lockouts, providing an immediate layer of defensive awareness.
 * **Symmetric Handshake Tokens:** Stations exchange secret symmetrical tokens upon connection to completely prevent identity spoofing across domain changes.
 * **End-to-End Encryption (E2E):** Direct messages use Dual-Ciphertext Routing. Your Private Key never leaves your browser's local storage, ensuring a Zero-Knowledge architecture—even server admins cannot read the SQLite database.
 * **Cloudflare WAF Integration:** To protect your node from DDoS without breaking the P2P Constellation, follow the [Official WAF Defense Guide (SECURITY.md)](SECURITY.md).

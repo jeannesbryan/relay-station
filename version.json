@@ -1,7 +1,7 @@
 {
-    "version": "6.2",
-    "codename": "The Sovereign Nomadic Update",
+    "version": "7.0",
+    "codename": "The Oracle Update",
     "status": "stable",
-    "changelog": "THE SOVEREIGN NOMADIC UPDATE (v6.2):\n- [SYSTEM] The Nomadic Protocol: Absolute domain independence. Migrate your SQLite database to a new domain, and Relay will automatically fire a Re-Sync pulse to update your coordinates across the entire Constellation.\n- [SYSTEM] The Escape Pod: One-click core database export from the Control Room for safe backup and portability.\n- [SECURITY] Secret Handshake Tokens: Symmetric cryptography token exchange prevents spoofing and secures your identity across domains.\n- [SECURITY] True Rate Limiting & WAF Shield: Cloudflare integration optimizations and hardened PHP endpoints.",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v6.2/Relay-OTA-Update-v6.2.zip"
+    "changelog": "THE ORACLE UPDATE (v7.0):\n- [SYSTEM] The Oracle: Real-time Telegram Webhook integration. Receive instant radar alerts on your smartphone for critical station activities.\n- [SECURITY] Login Sentinel: Immediate Telegram notification upon successful Commander logins or detected brute-force breach attempts.\n- [P2P] Radar Alerts: Real-time notification pulse for incoming Laser Links (DMs), Handshake signals (New Followers), and tactical Sonar Pulses.\n- [CORE] Integrated Telegram Engine: Lightweight, zero-dependency cURL messenger located in core/telegram.php.\n- [DOCS] Added TELEGRAM.md: Comprehensive tactical guide for setting up the Telegram Bot courier.",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v7.0/Relay-OTA-Update-v7.0.zip"
 }

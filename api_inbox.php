@@ -1,9 +1,10 @@
 <?php
 require_once 'core/ssl_shield.php';
 // ==========================================
-// 📡 RELAY STATION: ATMOSPHERIC SHIELD & INBOX (v6.2)
+// 📡 RELAY STATION: ATMOSPHERIC SHIELD & INBOX (v7.0)
 // Endpoint to receive incoming signals (POST) from foreign nodes. 
-// Equipped with Anti-Spam, Anti-Spoofing, Re-Sync, and Scorched Earth Firewalls.
+// Equipped with Anti-Spam, Anti-Spoofing, Re-Sync, Scorched Earth Firewalls,
+// and The Oracle (Telegram Webhooks).
 // ==========================================
 
 header('Content-Type: application/json');
@@ -70,7 +71,7 @@ $from_planet = trim($signal['from_planet']);
 $visibility = $signal['visibility'] ?? 'public';
 $expiry_date = $signal['expiry_date'] ?? null; 
 $media_url = !empty($signal['media_url']) ? trim($signal['media_url']) : null;
-$handshake_token = $signal['handshake_token'] ?? null; // [ NEW V6.2 ]
+$handshake_token = $signal['handshake_token'] ?? null;
 
 // ==========================================
 // 🛡️ [ DOUBLE SHIELD PROTOCOL: SONAR VALIDATION ]
@@ -89,8 +90,9 @@ if ($visibility === 'sonar_pulse') {
 // 🕵️ [ ANTI-SPOOFING ] Capture physical IP of the sender
 $sender_ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN';
 
-// 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
+// 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) & THE ORACLE ]
 require_once 'core/db_connect.php';
+require_once 'core/telegram.php'; // [ NEW V7.0 ]
 
 try {
     // ==========================================
@@ -115,7 +117,6 @@ try {
     }
 
     // 🛡️ [ V6.2 ] STRICT ANTI-SPOOFING VERIFICATION
-    // Jika stasiun lawan sudah memiliki Token rahasia, cocokkan! Jika berbeda, berarti Hacker/Spoofer.
     if (!empty($allied_node['handshake_token']) && $allied_node['handshake_token'] !== $handshake_token) {
         http_response_code(401); 
         echo json_encode([
@@ -135,7 +136,6 @@ try {
             exit;
         }
     } elseif ($visibility !== 'ack_receipt' && $visibility !== 'scorched_earth' && $visibility !== 'global_purge') { 
-        // Note: System signals bypass rate limiting so bulk actions don't get blocked
         $stmt_rl = $db->prepare("SELECT COUNT(*) FROM transmissions WHERE sender_ip = :ip AND timestamp >= datetime('now', '-1 minute')");
         $stmt_rl->execute([':ip' => $sender_ip]);
         if ($stmt_rl->fetchColumn() >= 5) {
@@ -162,6 +162,9 @@ try {
             ':url' => $normalized_from,
             ':payload' => $content
         ]);
+
+        // 👁️ [ V7.0 THE ORACLE: SONAR ALERT ]
+        sendTelegramAlert("📡 *TACTICAL SONAR DETECTED*\nIncoming Morse code pulse from: `" . $normalized_from . "`\nLogin to decode.");
         
     } elseif ($visibility === 'ack_receipt') {
         // 📩 [ ACK PROTOCOL ] Change local outbox status to READ (Centang Biru)
@@ -202,6 +205,9 @@ try {
             if ($stmt_alert_check->fetchColumn() == 0) {
                 $stmt_alert = $db->prepare("INSERT INTO alerts (type, from_planet, is_read) VALUES ('new_dm', :url, 0)");
                 $stmt_alert->execute([':url' => $normalized_from]);
+
+                // 👁️ [ V7.0 THE ORACLE: DM ALERT ]
+                sendTelegramAlert("✉️ *INCOMING LASER LINK*\nEncrypted direct message received from: `" . $normalized_from . "`\nLogin to decrypt and read.");
             }
         }
     }
