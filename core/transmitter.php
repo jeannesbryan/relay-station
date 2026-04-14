@@ -1,9 +1,10 @@
 <?php
 require_once 'ssl_shield.php';
 // ==========================================================
-// 🚀 RELAY STATION: TRANSMITTER ENGINE (E2E ENABLED v5.6)
+// 🚀 RELAY STATION: TRANSMITTER ENGINE (V6.2)
 // Handles Public, Direct, Ghost Protocol, Media, Sonar Pulse, ACKs, 
-// and the new Scorched Earth & Global Purge Protocols.
+// and Scorched Earth & Global Purge Protocols.
+// Now equipped with Symmetric Handshake Token injector.
 // ==========================================================
 
 date_default_timezone_set('UTC'); // Enforce UTC to prevent Ghost Protocol timing issues
@@ -13,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // 1. Capture Console Input
     $content = trim($_POST['content'] ?? '');
     
-    // [ E2E NEW ] Capture specific ciphertext for local database
+    // [ E2E ] Capture specific ciphertext for local database
     $content_local = trim($_POST['content_local'] ?? $content); 
     
     $visibility = $_POST['visibility'] ?? 'public';
@@ -63,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tactical_signals = ['sonar_pulse', 'ack_receipt', 'scorched_earth', 'global_purge'];
 
     // ==========================================
-    // 🖼️ & 🎙️ [ ADVANCED MEDIA MATRIX (V5.5) ]
+    // 🖼️ & 🎙️ [ ADVANCED MEDIA MATRIX ]
     // ==========================================
     $final_media_url = null;
     $media_urls = []; // Container for all processed media
@@ -78,7 +79,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $mb_raw = trim($_POST['media_base64']);
             $mb_items = [];
             
-            // Cek apakah JS mengirimkan Array JSON (Multi-media) atau String tunggal
             if (strpos($mb_raw, '[') === 0) {
                 $mb_items = json_decode($mb_raw, true) ?? [];
             } else {
@@ -107,7 +107,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             list(, $audio_base64)      = explode(',', $audio_base64);
             $media_data = base64_decode($audio_base64);
             
-            // Tentukan ekstensi dari MIME type
             $ext = 'webm'; // Default fallback
             if (strpos($type, 'audio/mp4') !== false || strpos($type, 'video/mp4') !== false) $ext = 'm4a';
             elseif (strpos($type, 'audio/ogg') !== false || strpos($type, 'video/ogg') !== false) $ext = 'ogg';
@@ -124,7 +123,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($_POST['media_base64']) && isset($_FILES['media'])) {
             $files = $_FILES['media'];
             
-            // Format array jika atribut multiple aktif di HTML
             $file_names = is_array($files['name']) ? $files['name'] : [$files['name']];
             $file_tmp_names = is_array($files['tmp_name']) ? $files['tmp_name'] : [$files['tmp_name']];
             $file_errors = is_array($files['error']) ? $files['error'] : [$files['error']];
@@ -154,7 +152,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // 🗄️ [ SMART STORAGE FORMATTER ]
-        // 0 file = null, 1 file = String, >1 files = JSON Array
         if (count($media_urls) === 1) {
             $final_media_url = $media_urls[0];
         } elseif (count($media_urls) > 1) {
@@ -168,11 +165,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         // 4. WRITE TO LOCAL CORE MEMORY 
-        // Skip insertion for all Tactical Signals (Sonar, ACKs, Purges)
         if (!in_array($visibility, $tactical_signals)) {
             $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, target_planet, is_remote, author_alias, expiry_date, media_url) VALUES (:content, :visibility, :target, 0, :author, :expiry, :media)");
             $stmt->execute([
-                // [ E2E NEW ] Save local ciphertext (locked with own Public Key)
                 ':content' => $content_local, 
                 ':visibility' => $visibility,
                 ':target' => $target_planet,
@@ -182,37 +177,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
         }
         
-        // 5. ASSEMBLE JSON CAPSULE
-        $payload = json_encode([
-            // [ E2E NEW ] Send outward (locked with target's Public Key)
+        // 5. ASSEMBLE BASE JSON CAPSULE
+        $base_payload = [
             "content" => $content, 
             "author_alias" => $author_alias,
             "from_planet" => $my_planet_url,
             "visibility" => $visibility,
             "expiry_date" => $expiry_date,
             "media_url" => $final_media_url
-        ]);
+        ];
 
         // --- [ TRANSMISSION ROUTING ] ---
 
         if ($visibility === 'public' || $visibility === 'global_purge') {
             // [ SCATTER BEAM ] Broadcast to all allies in the Star Chart
-            $query = $db->query("SELECT planet_url FROM following");
+            // [ V6.2 ] Fetch Handshake Tokens for each ally to bypass their Anti-Spoofing firewall
+            $query = $db->query("SELECT planet_url, handshake_token FROM following");
             $allies = $query->fetchAll(PDO::FETCH_ASSOC);
             
             if (count($allies) > 0) {
                 // Machine Gun (Multi-cURL)
                 $mh = curl_multi_init();
                 $curl_array = [];
+                
                 foreach ($allies as $i => $ally) {
                     $target_url = rtrim($ally['planet_url'], '/') . '/api_inbox.php';
+                    
+                    // Inject Unique Token for this specific ally
+                    $ally_payload = $base_payload;
+                    $ally_payload['handshake_token'] = $ally['handshake_token'] ?? '';
+                    $json_payload = json_encode($ally_payload);
+                    
                     $curl_array[$i] = curl_init($target_url);
                     curl_setopt($curl_array[$i], CURLOPT_RETURNTRANSFER, true);
                     curl_setopt($curl_array[$i], CURLOPT_POST, true);
-                    curl_setopt($curl_array[$i], CURLOPT_POSTFIELDS, $payload);
+                    curl_setopt($curl_array[$i], CURLOPT_POSTFIELDS, $json_payload);
                     curl_setopt($curl_array[$i], CURLOPT_HTTPHEADER, [
                         'Content-Type: application/json',
-                        'Content-Length: ' . strlen($payload)
+                        'Content-Length: ' . strlen($json_payload)
                     ]);
                     curl_setopt($curl_array[$i], CURLOPT_TIMEOUT, 5); 
                     curl_multi_add_handle($mh, $curl_array[$i]);
@@ -230,16 +232,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (in_array($visibility, ['direct', 'sonar_pulse', 'ack_receipt', 'scorched_earth'])) {
             // [ LASER LINK / TACTICAL PULSES ] Fire specific message/ping to single target
             if (!empty($target_planet)) {
-                $target_url = rtrim($target_planet, '/') . '/api_inbox.php';
+                $target_clean = rtrim($target_planet, '/');
+                if (strpos($target_clean, 'http') !== 0) {
+                    $target_clean = 'https://' . $target_clean;
+                }
+                
+                $target_url = $target_clean . '/api_inbox.php';
+                
+                // [ V6.2 ] Fetch token specifically for this target
+                $stmt_tk = $db->prepare("SELECT handshake_token FROM following WHERE planet_url = :url");
+                $stmt_tk->execute([':url' => $target_clean]);
+                $hs_token = $stmt_tk->fetchColumn() ?: '';
+                
+                $direct_payload = $base_payload;
+                $direct_payload['handshake_token'] = $hs_token;
+                $json_payload = json_encode($direct_payload);
                 
                 // Single cURL execution
                 $ch = curl_init($target_url);
                 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                 curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $json_payload);
                 curl_setopt($ch, CURLOPT_HTTPHEADER, [
                     'Content-Type: application/json',
-                    'Content-Length: ' . strlen($payload)
+                    'Content-Length: ' . strlen($json_payload)
                 ]);
                 curl_setopt($ch, CURLOPT_TIMEOUT, 5); 
                 curl_exec($ch);

@@ -7,6 +7,26 @@ session_start();
 date_default_timezone_set('UTC'); 
 
 // ==========================================
+// 🚀 [ V6.2 THE ESCAPE POD: DATABASE EXPORT ]
+// ==========================================
+if (isset($_GET['escape_pod']) && isset($_SESSION['relay_auth']) && $_SESSION['relay_auth'] === true) {
+    $db_file = 'data/relay_core.sqlite';
+    if (file_exists($db_file)) {
+        header('Content-Description: File Transfer');
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="EscapePod_'.date('Ymd_His').'_relay_core.sqlite"');
+        header('Expires: 0');
+        header('Cache-Control: must-revalidate');
+        header('Pragma: public');
+        header('Content-Length: ' . filesize($db_file));
+        readfile($db_file);
+        exit;
+    } else {
+        die("[ CRITICAL ERROR ] Escape Pod Failed: Core memory not found.");
+    }
+}
+
+// ==========================================
 // ⚙️ [ AUTO-DETECT SYSTEM VERSION ]
 // ==========================================
 $station_version = 'UNKNOWN';
@@ -53,7 +73,7 @@ try {
 }
 
 // ==========================================
-// 🔑 [ V6.0: THE QUANTUM GATE (AJAX AUTH) ]
+// 🔑 [ THE QUANTUM GATE (AJAX AUTH) ]
 // ==========================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_login'])) {
     header('Content-Type: application/json');
@@ -103,7 +123,7 @@ if (isset($_GET['logout'])) {
 // ==========================================
 if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     
-    // 🗄️ [ V6.0 ] Pre-fetch Vault for JS Gatekeeper
+    // Pre-fetch Vault for JS Gatekeeper
     $stmt_key = $db->query("SELECT config_value FROM system_config WHERE config_key = 'encrypted_privkey' ORDER BY rowid DESC LIMIT 1");
     $pre_enc_priv = $stmt_key ? $stmt_key->fetchColumn() : '';
     
@@ -148,7 +168,7 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
         // ==========================================
-        // 🔐 V6.0: THE QUANTUM GATE ENGINE
+        // 🔐 THE QUANTUM GATE ENGINE
         // ==========================================
         const serverEncPriv = "<?php echo addslashes($pre_enc_priv); ?>";
         const serverPubKey = "<?php echo addslashes($pre_pub_key); ?>";
@@ -165,7 +185,7 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
             btn.innerText = '[ DECRYPTING_GATE... ]';
             if(alertBox) alertBox.style.display = 'none';
 
-            // 1. Attempt Vault Decryption (Multi-Device Auto-Sync)
+            // Attempt Vault Decryption
             if (serverEncPriv) {
                 try {
                     const parts = serverEncPriv.split(':');
@@ -186,12 +206,10 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
                     const decrypted = await window.crypto.subtle.decrypt({name: "AES-GCM", iv: iv}, key, cipher);
                     const privPem = new TextDecoder().decode(decrypted);
 
-                    // Vault Opened! Sync identity to local storage silently
                     localStorage.setItem('relay_privkey', privPem);
                     localStorage.setItem('relay_pubkey', serverPubKey);
 
                 } catch (err) {
-                    // Decrypt failed: Wrong passcode or corrupted vault
                     btn.disabled = false;
                     btn.innerText = '[ OVERRIDE_SYSTEM ]';
                     alertBox.style.display = 'block';
@@ -200,7 +218,7 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
                 }
             }
 
-            // 2. Fire AJAX Login
+            // Fire AJAX Login
             btn.innerText = '[ AUTHENTICATING... ]';
             const formData = new FormData();
             formData.append('ajax_login', '1');
@@ -238,6 +256,38 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
 // 🚀 [ MAIN DASHBOARD PROCESSOR ]
 // ==========================================
 try {
+    // 🌐 [ V6.2 THE NOMADIC RE-SYNC DISPATCHER ]
+    if (isset($_POST['action']) && $_POST['action'] === 'nomadic_resync') {
+        $new_url = trim($_POST['new_url']);
+        $old_url = trim($_POST['old_url']);
+        
+        // 1. Update Core Memory Local URL
+        $db->prepare("DELETE FROM system_config WHERE config_key = 'local_planet_url'")->execute();
+        $stmt = $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('local_planet_url', :val)");
+        $stmt->execute([':val' => $new_url]);
+
+        // 2. Fire Re-Sync Pulse to all followers & following
+        $following = $db->query("SELECT planet_url, handshake_token FROM following WHERE handshake_token IS NOT NULL")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($following as $node) {
+            $payload = json_encode([
+                'action' => 'resync',
+                'old_url' => $old_url,
+                'new_url' => $new_url,
+                'handshake_token' => $node['handshake_token']
+            ]);
+            $ch = curl_init(rtrim($node['planet_url'], '/') . '/api_inbox.php');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+            @curl_exec($ch);
+            @curl_close($ch);
+        }
+        echo "RESYNC_COMPLETE";
+        exit;
+    }
+
     if (isset($_POST['action']) && $_POST['action'] === 'save_control_room') {
         $name = trim($_POST['station_name'] ?? 'RELAY_STATION');
         $bio = trim($_POST['station_bio'] ?? '');
@@ -272,7 +322,6 @@ try {
         if ($base_path === '\\' || $base_path === '/') $base_path = '';
         $my_planet_url = rtrim($protocol . $host . $base_path, '/');
         
-        // Cek apakah mengirim sinyal Ping atau Kill Signal
         $ping_data = '';
         if ($lighthouse === '1') {
             $ping_data = json_encode([
@@ -293,7 +342,7 @@ try {
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, $ping_data);
         curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 3); // Timeout cepat agar save tidak lemot
+        curl_setopt($ch, CURLOPT_TIMEOUT, 3);
         @curl_exec($ch);
         @curl_close($ch);
 
@@ -434,6 +483,22 @@ try {
     $stmt_pub = $db->query("SELECT config_value FROM system_config WHERE config_key = 'public_key' ORDER BY rowid DESC LIMIT 1");
     $server_pubkey = $stmt_pub ? $stmt_pub->fetchColumn() : null;
 
+    // 🌐 [ V6.2 ] THE NOMADIC RE-SYNC RADAR (DETECT DOMAIN CHANGE)
+    $stmt_local = $db->query("SELECT config_value FROM system_config WHERE config_key = 'local_planet_url' ORDER BY rowid DESC LIMIT 1");
+    $stored_local_url = $stmt_local ? $stmt_local->fetchColumn() : '';
+    
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+    $host = $_SERVER['HTTP_HOST'];
+    $base_path = dirname($_SERVER['SCRIPT_NAME']);
+    if ($base_path === '\\' || $base_path === '/') $base_path = '';
+    $current_local_url = rtrim($protocol . $host . $base_path, '/');
+
+    $trigger_nomadic_resync = false;
+    if (!empty($stored_local_url) && $stored_local_url !== $current_local_url) {
+        $trigger_nomadic_resync = true;
+        $old_planet_url = $stored_local_url;
+    }
+
 } catch (PDOException $e) {
     die("<h3 class='t-alert danger'>[ CRITICAL ERROR ] Core Memory Data Fetch Failed.</h3>");
 }
@@ -477,6 +542,32 @@ try {
             > MOUNTING_PUBLIC_TIMELINE<span class="t-loading-dots"></span>
         </div>
     </div>
+
+    <?php if ($trigger_nomadic_resync): ?>
+    <div id="nomadic-resync-modal" class="t-splash" style="z-index: 9999; background: rgba(0,0,0,0.95); flex-direction: column; justify-content: center; align-items: center; display: flex;">
+        <div class="t-card warning text-center" style="width: 90%; max-width: 450px; border-color: var(--t-yellow);">
+            <h2 class="text-warning font-bold t-blink">> THE NOMADIC PROTOCOL ACTIVATED</h2>
+            <p class="text-muted fs-small mt-3">> Domain change detected.<br>Old: <strong><?php echo htmlspecialchars($old_planet_url); ?></strong><br>New: <strong class="text-success"><?php echo htmlspecialchars($current_local_url); ?></strong></p>
+            <p class="text-muted fs-small">> Firing Re-Sync Pulse to all allied nodes to update their Star Charts automatically.</p>
+            <div class="text-warning mt-3 mb-2">[ FIRING PULSE... ] <span class="t-loading-dots"></span></div>
+        </div>
+    </div>
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            const formData = new FormData();
+            formData.append('action', 'nomadic_resync');
+            formData.append('old_url', '<?php echo addslashes($old_planet_url); ?>');
+            formData.append('new_url', '<?php echo addslashes($current_local_url); ?>');
+            
+            fetch('console.php', { method: 'POST', body: formData }).then(r => r.text()).then(res => {
+                const splashText = document.querySelector('#nomadic-resync-modal .text-warning.mt-3');
+                splashText.innerHTML = '[ ✓ RE-SYNC COMPLETE ]';
+                splashText.classList.replace('text-warning', 'text-success');
+                setTimeout(() => { document.getElementById('nomadic-resync-modal').style.display = 'none'; }, 2000);
+            });
+        });
+    </script>
+    <?php endif; ?>
 
     <div id="vault-setup-modal" class="t-splash" style="display:none; z-index: 2000; background: rgba(0,0,0,0.9); flex-direction: column; justify-content: center; align-items: center;">
         <div class="t-card success" style="width: 90%; max-width: 400px; border-color: var(--t-green);">
@@ -687,6 +778,7 @@ try {
                     <?php endif; ?>
 
                     <form action="core/add_planet.php" method="POST" class="m-0" id="follow-form">
+                        <input type="hidden" name="handshake_token" value="<?php echo bin2hex(random_bytes(16)); ?>">
                         <input type="url" name="planet_url" id="target-planet-input" class="t-input mb-2" placeholder="https://domain.com" required>
                         <button type="submit" class="t-btn w-100 t-btn-sm">[ FOLLOW NODE ]</button>
                     </form>
@@ -748,6 +840,14 @@ try {
                         <div class="mt-2 fs-small text-muted">
                             > Transmit station signal to public directory (Opt-In). 
                             <input type="checkbox" id="cr-lighthouse" value="1" <?php echo ($lighthouse_opt == '1') ? 'checked' : ''; ?> style="vertical-align: middle; cursor: pointer; margin-left: 5px;">
+                        </div>
+                    </div>
+
+                    <div class="mb-3 t-card p-2" style="border-color: var(--t-green); background: rgba(0,255,65,0.05);">
+                        <span class="font-bold text-success">> THE ESCAPE POD (DATA PORTABILITY)</span>
+                        <div class="mt-2 fs-small text-muted">
+                            > Download your core memory before migrating to a new domain. Restore it later to activate the <strong>Token Re-Sync Protocol</strong>.
+                            <a href="console.php?escape_pod=true" class="t-btn success t-btn-sm w-100 mt-2 text-center" style="text-decoration:none; display:block;">[ 📥 EXPORT CORE DATABASE ]</a>
                         </div>
                     </div>
 
@@ -932,7 +1032,7 @@ try {
         });
 
         // ==========================================
-        // 💬 [ V5.6 TACTICAL QUOTE & GLOBAL PURGE ]
+        // 💬 [ TACTICAL QUOTE & GLOBAL PURGE ]
         // ==========================================
         function quoteTimeline(btn, author) {
             const container = btn.closest('.transmission-card');
@@ -1003,7 +1103,6 @@ try {
                 formData.append('lighthouse_opt', isLighthouse);
                 formData.append('station_passcode', newPass);
 
-                // Auto Re-Encrypt Vault if passcode is changed
                 if (newPass) {
                     const privPem = localStorage.getItem('relay_privkey');
                     if (privPem) {
@@ -1144,7 +1243,7 @@ try {
         }
 
         // ==========================================
-        // 🗜️ [ V5.5 MULTI-MEDIA COMPRESSOR MATRIX ]
+        // 🗜️ [ MULTI-MEDIA COMPRESSOR MATRIX ]
         // ==========================================
         if (mediaInput) {
             mediaInput.addEventListener('change', async function(e) {

@@ -1,6 +1,6 @@
 <?php
 require_once 'ssl_shield.php';
-// RELAY STATION: STAR CHART UPDATER
+// RELAY STATION: STAR CHART UPDATER (V6.2)
 
 session_start();
 
@@ -10,6 +10,7 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $planet_url = trim($_POST['planet_url'] ?? '');
+    $handshake_token = trim($_POST['handshake_token'] ?? ''); // [ NEW V6.2 ]
     
     if (empty($planet_url)) {
         header("Location: ../console.php?error=empty_url");
@@ -71,15 +72,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_once 'db_connect.php';
     
     try {
-        $stmt = $db->prepare("INSERT OR IGNORE INTO following (planet_url, alias) VALUES (:url, :alias)");
-        $stmt->execute([ ':url' => $planet_url, ':alias' => $alias ]);
+        // [ V6.2 ] Simpan Handshake Token ke dalam tabel following
+        $stmt = $db->prepare("INSERT OR IGNORE INTO following (planet_url, alias, handshake_token) VALUES (:url, :alias, :token)");
+        $stmt->execute([ ':url' => $planet_url, ':alias' => $alias, ':token' => $handshake_token ]);
 
         // ==========================================
         // 🤝 [ THE HANDSHAKE PROTOCOL ]
         // Send a "Knock-Knock" notification to the target planet
         // ==========================================
         $handshake_url = $planet_url . '/api_handshake.php';
-        $hs_payload = json_encode(['from_planet' => $my_planet_url]);
+        $hs_payload = json_encode([
+            'from_planet' => $my_planet_url,
+            'handshake_token' => $handshake_token // [ V6.2 ] Kirim token agar musuh bisa menyimpannya
+        ]);
 
         $ch_hs = curl_init($handshake_url);
         curl_setopt($ch_hs, CURLOPT_RETURNTRANSFER, true);

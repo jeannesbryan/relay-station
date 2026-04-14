@@ -1,9 +1,9 @@
 <?php
 require_once 'core/ssl_shield.php';
 // ==========================================
-// 📡 RELAY STATION: ATMOSPHERIC SHIELD & INBOX (v5.6)
+// 📡 RELAY STATION: ATMOSPHERIC SHIELD & INBOX (v6.2)
 // Endpoint to receive incoming signals (POST) from foreign nodes. 
-// Equipped with Anti-Spam, Anti-Spoofing, and Scorched Earth Firewalls.
+// Equipped with Anti-Spam, Anti-Spoofing, Re-Sync, and Scorched Earth Firewalls.
 // ==========================================
 
 header('Content-Type: application/json');
@@ -20,6 +20,44 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $raw_payload = file_get_contents('php://input');
 $signal = json_decode($raw_payload, true);
 
+// ==========================================
+// 🌐 [ V6.2 THE NOMADIC RE-SYNC RECEIVER ]
+// ==========================================
+// If this is a special nomadic pulse, intercept it before regular processing
+if (isset($signal['action']) && $signal['action'] === 'resync') {
+    require_once 'core/db_connect.php';
+    try {
+        $old_url = rtrim($signal['old_url'], '/');
+        if (strpos($old_url, 'http') !== 0) $old_url = 'https://' . $old_url;
+        
+        $new_url = rtrim($signal['new_url'], '/');
+        if (strpos($new_url, 'http') !== 0) $new_url = 'https://' . $new_url;
+        
+        $token = $signal['handshake_token'] ?? '';
+        
+        // Authenticate via token and update Star Chart
+        $stmt = $db->prepare("UPDATE following SET planet_url = :new_url WHERE planet_url = :old_url AND handshake_token = :token");
+        $stmt->execute([':new_url' => $new_url, ':old_url' => $old_url, ':token' => $token]);
+        
+        if ($stmt->rowCount() > 0) {
+            // Also heal the followers list to maintain mutual linkage
+            $stmt2 = $db->prepare("UPDATE followers SET planet_url = :new_url WHERE planet_url = :old_url");
+            $stmt2->execute([':new_url' => $new_url, ':old_url' => $old_url]);
+            
+            http_response_code(200);
+            echo json_encode(['status' => 'success', 'message' => '[ RE-SYNC ACCEPTED ] Star Chart coordinates updated to new domain.']);
+        } else {
+            http_response_code(401);
+            echo json_encode(['status' => 'error', 'message' => '[ RE-SYNC REJECTED ] Invalid token or node not found in Star Chart.']);
+        }
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => '[ CORE FAILURE ] Database malfunction during re-sync.']);
+    }
+    exit;
+}
+
+// 3. [ STANDARD SIGNAL VALIDATION ]
 if (!$signal || empty($signal['content']) || empty($signal['author_alias']) || empty($signal['from_planet'])) {
     http_response_code(400);
     echo json_encode(['status' => 'error', 'message' => '[ CORRUPTED SIGNAL ] Incomplete data capsule.']);
@@ -32,6 +70,7 @@ $from_planet = trim($signal['from_planet']);
 $visibility = $signal['visibility'] ?? 'public';
 $expiry_date = $signal['expiry_date'] ?? null; 
 $media_url = !empty($signal['media_url']) ? trim($signal['media_url']) : null;
+$handshake_token = $signal['handshake_token'] ?? null; // [ NEW V6.2 ]
 
 // ==========================================
 // 🛡️ [ DOUBLE SHIELD PROTOCOL: SONAR VALIDATION ]
@@ -55,24 +94,35 @@ require_once 'core/db_connect.php';
 
 try {
     // ==========================================
-    // 🛡️ [ FIREWALL ANTI-SPAM (STAR CHART CHECK) ]
+    // 🛡️ [ FIREWALL: STAR CHART & ANTI-SPOOFING ]
     // ==========================================
     $normalized_from = rtrim($from_planet, '/');
     if (strpos($normalized_from, 'http') !== 0) {
         $normalized_from = 'https://' . $normalized_from;
     }
 
-    $firewall_stmt = $db->prepare("SELECT COUNT(*) FROM following WHERE planet_url = :url");
+    $firewall_stmt = $db->prepare("SELECT handshake_token FROM following WHERE planet_url = :url");
     $firewall_stmt->execute([':url' => $normalized_from]);
-    $is_allied = $firewall_stmt->fetchColumn();
+    $allied_node = $firewall_stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$is_allied) {
+    if (!$allied_node) {
         http_response_code(403); 
         echo json_encode([
             'status' => 'error', 
             'message' => '[ FIREWALL REFLECTED ] Access denied. Your node is not registered in our Star Chart.'
         ]);
         exit; // Reject landing, do not save to SQLite!
+    }
+
+    // 🛡️ [ V6.2 ] STRICT ANTI-SPOOFING VERIFICATION
+    // Jika stasiun lawan sudah memiliki Token rahasia, cocokkan! Jika berbeda, berarti Hacker/Spoofer.
+    if (!empty($allied_node['handshake_token']) && $allied_node['handshake_token'] !== $handshake_token) {
+        http_response_code(401); 
+        echo json_encode([
+            'status' => 'error', 
+            'message' => '[ SPOOFING DETECTED ] Invalid Handshake Token. Intruder alert triggered. Signal destroyed.'
+        ]);
+        exit;
     }
 
     // 🛑 [ TRUE RATE LIMITING (BY IP / PLANET) ] Max 5 messages per minute
@@ -119,17 +169,17 @@ try {
         $stmt_ack->execute([':url' => $normalized_from]);
         
     } elseif ($visibility === 'scorched_earth') {
-        // 🔥 [ V5.6: SCORCHED EARTH PROTOCOL ] Destroy all DMs involving this sender
+        // 🔥 [ SCORCHED EARTH PROTOCOL ] Destroy all DMs involving this sender
         $like_author = '%' . $domain_host . '%';
         $stmt_scorch = $db->prepare("DELETE FROM transmissions WHERE visibility = 'direct' AND (author_alias LIKE :a1 OR target_planet LIKE :a2)");
         $stmt_scorch->execute([':a1' => $like_author, ':a2' => $like_author]);
         
     } elseif ($visibility === 'global_purge') {
-        // 🔥 [ V5.6: GLOBAL PURGE PROTOCOL ] Destroy a specific public post by this sender matching the content
+        // 🔥 [ GLOBAL PURGE PROTOCOL ] Destroy a specific public post by this sender matching the content
         $stmt_purge = $db->prepare("DELETE FROM transmissions WHERE visibility = 'public' AND author_alias = :author AND content = :content");
         $stmt_purge->execute([
             ':author' => $formatted_author,
-            ':content' => htmlspecialchars($content) // Match exactly the escaped version in the database
+            ':content' => htmlspecialchars($content) 
         ]);
         
     } else {
@@ -140,14 +190,12 @@ try {
             ':visibility' => htmlspecialchars($visibility),
             ':author' => $formatted_author,
             ':expiry' => $expiry_date ? htmlspecialchars($expiry_date) : null,
-            // 🛡️ [ BUG FIX ]: Removed htmlspecialchars() to preserve V5.5 JSON Array structure
             ':media_url' => $media_url, 
             ':ip' => $sender_ip
         ]);
 
         // 🔔 [ NOTIFICATION TRIGGER: NEW DIRECT MESSAGE ]
         if ($visibility === 'direct') {
-            // Check if an unread DM alert from this node already exists (Prevents alert spam)
             $stmt_alert_check = $db->prepare("SELECT COUNT(*) FROM alerts WHERE type = 'new_dm' AND from_planet = :url AND is_read = 0");
             $stmt_alert_check->execute([':url' => $normalized_from]);
             

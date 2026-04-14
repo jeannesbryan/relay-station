@@ -22,6 +22,8 @@ Relay Station is designed to be extremely lightweight and can be hosted on a $1/
 
 * **100% Data Sovereignty:** You own the server, the database, and the media. There is no central database.
 * **Constellation Star Chart (P2P Following):** Connect to other Relay nodes simply by adding their URL. The system automatically validates the target node and prevents echo chambers via built-in Anti-Self Loop protocols.
+* **The Nomadic Protocol (Token Re-Sync):** Absolute domain independence. If your server dies, move your SQLite database to a new domain. Your station will automatically fire a cryptographic Re-Sync pulse to update your URL across all allied nodes instantly.
+* **The Escape Pod (Data Portability):** A one-click emergency export of your core memory (SQLite database) directly from the Control Room for safe, seamless migrations.
 * **The Quantum Gate:** Silky smooth, zero-reload authentication. Your Master Passcode decrypts your Vault and logs you in simultaneously in milliseconds.
 * **The Lighthouse Protocol:** An opt-in headless directory. Transmit your coordinates to a central beacon to be discovered organically, or stay completely hidden.
 * **The Handshake Protocol (Smart Alerts):** When a foreign node locks onto your coordinates or sends a Laser Link, your console's alert system will notify you, allowing for seamless one-click mutual connections without sacrificing your firewall.
@@ -87,6 +89,7 @@ When a new version is available, you do not need to download anything manually. 
 
 ## 🛡️ Security Systems
 
+* **Symmetric Handshake Tokens:** Stations exchange secret symmetrical tokens upon connection to completely prevent identity spoofing across domain changes.
 * **End-to-End Encryption (E2E):** Direct messages use Dual-Ciphertext Routing. Your Private Key never leaves your browser's local storage, ensuring a Zero-Knowledge architecture—even server admins cannot read the SQLite database.
 * **Cloudflare WAF Integration:** To protect your node from DDoS without breaking the P2P Constellation, follow the [Official WAF Defense Guide (SECURITY.md)](SECURITY.md).
 * **Rate Limiting & Anti-Spoofing:** The `api_inbox.php` endpoint restricts incoming transmissions to a maximum of 5 signals per minute per IP address.
