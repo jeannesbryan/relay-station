@@ -13,18 +13,18 @@ Built purely with **PHP** and **SQLite**, it is designed to run on absolutely an
 Relay Station is designed to be extremely lightweight and can be hosted on a $1/month shared hosting plan or a Raspberry Pi.
 * **PHP:** Version 7.4, 8.0, 8.1, or 8.2+
 * **Database:** SQLite3 (No MySQL/MariaDB setup required)
-* **Required PHP Extensions:** `cURL` (for transmission), `pdo_sqlite` (for core memory), `ZipArchive` (for OTA updates & installation), and `gd` or `fileinfo` (for media processing).
+* **Required PHP Extensions:** `cURL` (for transmission), `pdo_sqlite` (for core memory), `ZipArchive` (for OTA updates, installation, & backups), and `gd` or `fileinfo` (for media processing).
 * **Security:** An active SSL/HTTPS certificate is strictly required for the domain/subdomain.
 
 ---
 
-## 🚀 Core Capabilities & Features
+## 🚀 Core Capabilities & Features (v7.1 - The Fortress Update)
 
 * **100% Data Sovereignty:** You own the server, the database, and the media. There is no central database.
 * **The Oracle (Real-Time Alerts):** Securely integrate a private Telegram Bot to act as your station's Early Warning System. Receive instant tactical notifications for incoming Laser Links, Sonar Pulses, follower handshakes, and security alerts even when your browser is closed.
 * **Constellation Star Chart (P2P Following):** Connect to other Relay nodes simply by adding their URL. The system automatically validates the target node and prevents echo chambers via built-in Anti-Self Loop protocols.
 * **The Nomadic Protocol (Token Re-Sync):** Absolute domain independence. If your server dies, move your SQLite database to a new domain. Your station will automatically fire a cryptographic Re-Sync pulse to update your URL across all allied nodes instantly.
-* **The Escape Pod (Data Portability):** A one-click emergency export of your core memory (SQLite database) directly from the Control Room for safe, seamless migrations.
+* **The Station Archive & Escape Pod:** Complete data portability. Download a full one-click ZIP backup of your entire station (source code, media, and database), or execute a quick export of just the core SQLite memory for safe, seamless migrations.
 * **The Quantum Gate:** Silky smooth, zero-reload authentication. Your Master Passcode decrypts your Vault and logs you in simultaneously in milliseconds.
 * **The Lighthouse Protocol:** An opt-in headless directory. Transmit your coordinates to a central beacon to be discovered organically, or stay completely hidden.
 * **The Handshake Protocol (Smart Alerts):** When a foreign node locks onto your coordinates or sends a Laser Link, your console's alert system will notify you, allowing for seamless one-click mutual connections without sacrificing your firewall.
@@ -62,7 +62,7 @@ Relay Station is built on a pure **Peer-to-Peer (P2P) Distributed Architecture**
 ### The Advantages (Pros)
 1.  **Extreme Resilience (Anti-Fragile):** There is no central tracking server. If 90% of the nodes in the universe are destroyed, the remaining 10% will continue to function and communicate flawlessly.
 2.  **Zero-Configuration Deployment:** The "Drop-Pod" installer builds the database, sets up security protocols, and self-destructs the installation files automatically. 
-3.  **Lightweight & High Concurrency:** Uses SQLite for core memory. Powered by **Write-Ahead Logging (WAL) Mode**, the database allows simultaneous read and write operations without locking, gracefully handling high-traffic P2P signal bombardments with minimal RAM. It also cleans up its own orphan files automatically via an advanced Garbage Collector.
+3.  **Lightweight & High Concurrency:** Uses SQLite for core memory. Powered by **Write-Ahead Logging (WAL) Mode** and an **Anti-Collision Engine (Busy Timeout)**, the database allows simultaneous read and write operations without locking, gracefully handling high-traffic P2P signal bombardments with minimal RAM. It also cleans up its own orphan files automatically via an advanced Garbage Collector.
 4.  **Censorship Resistant:** No algorithm, no shadow-banning, and no central moderation. You only receive data from the nodes you explicitly trust and follow.
 
 ### The Limitations (Cons)
@@ -90,6 +90,7 @@ When a new version is available, you do not need to download anything manually. 
 
 ## 🛡️ Security Systems
 
+* **Advanced HTML Sanitization:** Extreme data purging mechanisms (strip_tags, filter_var) neutralize XSS payloads and malicious scripts from foreign nodes before they can breach the core memory.
 * **The Oracle Sentinel:** Real-time Telegram alerts for successful Commander logins and anti-brute force lockouts, providing an immediate layer of defensive awareness.
 * **Symmetric Handshake Tokens:** Stations exchange secret symmetrical tokens upon connection to completely prevent identity spoofing across domain changes.
 * **End-to-End Encryption (E2E):** Direct messages use Dual-Ciphertext Routing. Your Private Key never leaves your browser's local storage, ensuring a Zero-Knowledge architecture—even server admins cannot read the SQLite database.

@@ -1,10 +1,10 @@
 <?php
 require_once 'core/ssl_shield.php';
 // ==========================================
-// 📡 RELAY STATION: ATMOSPHERIC SHIELD & INBOX (v7.0)
+// 📡 RELAY STATION: ATMOSPHERIC SHIELD & INBOX (v7.1)
 // Endpoint to receive incoming signals (POST) from foreign nodes. 
 // Equipped with Anti-Spam, Anti-Spoofing, Re-Sync, Scorched Earth Firewalls,
-// and The Oracle (Telegram Webhooks).
+// The Oracle (Telegram Webhooks), and Advanced HTML Sanitization.
 // ==========================================
 
 header('Content-Type: application/json');
@@ -34,7 +34,10 @@ if (isset($signal['action']) && $signal['action'] === 'resync') {
         $new_url = rtrim($signal['new_url'], '/');
         if (strpos($new_url, 'http') !== 0) $new_url = 'https://' . $new_url;
         
-        $token = $signal['handshake_token'] ?? '';
+        // 🛡️ Advanced Sanitization for Re-Sync
+        $old_url = filter_var($old_url, FILTER_SANITIZE_URL);
+        $new_url = filter_var($new_url, FILTER_SANITIZE_URL);
+        $token = isset($signal['handshake_token']) ? strip_tags(trim($signal['handshake_token'])) : '';
         
         // Authenticate via token and update Star Chart
         $stmt = $db->prepare("UPDATE following SET planet_url = :new_url WHERE planet_url = :old_url AND handshake_token = :token");
@@ -58,20 +61,30 @@ if (isset($signal['action']) && $signal['action'] === 'resync') {
     exit;
 }
 
-// 3. [ STANDARD SIGNAL VALIDATION ]
+// ==========================================
+// 🛡️ 3. [ V7.1 ADVANCED SIGNAL VALIDATION & SANITIZATION ]
+// ==========================================
 if (!$signal || empty($signal['content']) || empty($signal['author_alias']) || empty($signal['from_planet'])) {
     http_response_code(400);
     echo json_encode(['status' => 'error', 'message' => '[ CORRUPTED SIGNAL ] Incomplete data capsule.']);
     exit;
 }
 
-$content = trim($signal['content']);
-$author = trim($signal['author_alias']);
-$from_planet = trim($signal['from_planet']);
-$visibility = $signal['visibility'] ?? 'public';
-$expiry_date = $signal['expiry_date'] ?? null; 
-$media_url = !empty($signal['media_url']) ? trim($signal['media_url']) : null;
-$handshake_token = $signal['handshake_token'] ?? null;
+// 🧹 Extreme Data Purging: Strip all malicious HTML/PHP tags before processing
+$content = strip_tags(trim($signal['content']));
+$author = strip_tags(trim($signal['author_alias']));
+
+// 🧹 URL Specific Sanitization
+$from_planet = filter_var(trim($signal['from_planet']), FILTER_SANITIZE_URL);
+
+// 🧹 Optional Data Sanitization
+$visibility = isset($signal['visibility']) ? strip_tags(trim($signal['visibility'])) : 'public';
+$expiry_date = isset($signal['expiry_date']) ? strip_tags(trim($signal['expiry_date'])) : null; 
+$handshake_token = isset($signal['handshake_token']) ? strip_tags(trim($signal['handshake_token'])) : null;
+
+// 🧹 Media URL Sanitization (Must preserve Base64 strings and JSON structure)
+$media_url = !empty($signal['media_url']) ? strip_tags(trim($signal['media_url'])) : null;
+
 
 // ==========================================
 // 🛡️ [ DOUBLE SHIELD PROTOCOL: SONAR VALIDATION ]
@@ -92,7 +105,7 @@ $sender_ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR
 
 // 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) & THE ORACLE ]
 require_once 'core/db_connect.php';
-require_once 'core/telegram.php'; // [ NEW V7.0 ]
+require_once 'core/telegram.php'; // [ V7.0 ]
 
 try {
     // ==========================================
@@ -187,6 +200,7 @@ try {
         
     } else {
         // 📩 [ STANDARD TRANSMISSION ] Save to main chat logs
+        // Note: htmlspecialchars() adds a second layer of defense (Defense in Depth)
         $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, is_remote, author_alias, expiry_date, media_url, sender_ip) VALUES (:content, :visibility, 1, :author, :expiry, :media_url, :ip)");
         $stmt->execute([
             ':content' => htmlspecialchars($content),

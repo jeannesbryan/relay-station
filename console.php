@@ -27,6 +27,46 @@ if (isset($_GET['escape_pod']) && isset($_SESSION['relay_auth']) && $_SESSION['r
 }
 
 // ==========================================
+// 🚀 [ V7.1 THE STATION ARCHIVE: FULL SOURCE & DATA EXPORT ]
+// ==========================================
+if (isset($_GET['export_station']) && isset($_SESSION['relay_auth']) && $_SESSION['relay_auth'] === true) {
+    $zip_filename = 'RelayStation_Backup_' . date('Ymd_His') . '.zip';
+    $zip_filepath = sys_get_temp_dir() . '/' . $zip_filename;
+    
+    $zip = new ZipArchive();
+    if ($zip->open($zip_filepath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === TRUE) {
+        $dir = __DIR__;
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::LEAVES_ONLY
+        );
+
+        foreach ($files as $name => $file) {
+            if (!$file->isDir()) {
+                $filePath = $file->getRealPath();
+                $relativePath = substr($filePath, strlen($dir) + 1);
+                
+                // Skip existing zip files to prevent infinite recursion/bloat
+                $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+                if ($ext !== 'zip' && $ext !== 'log') {
+                    $zip->addFile($filePath, $relativePath);
+                }
+            }
+        }
+        $zip->close();
+        
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="' . $zip_filename . '"');
+        header('Content-Length: ' . filesize($zip_filepath));
+        readfile($zip_filepath);
+        @unlink($zip_filepath); // Clean up temp file
+        exit;
+    } else {
+        die("[ CRITICAL ERROR ] Failed to create Station Archive. Ensure ZipArchive PHP extension is enabled.");
+    }
+}
+
+// ==========================================
 // ⚙️ [ AUTO-DETECT SYSTEM VERSION ]
 // ==========================================
 $station_version = 'UNKNOWN';
@@ -39,7 +79,7 @@ if (file_exists('version.json')) {
 
 // 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) & THE ORACLE ]
 require_once 'core/db_connect.php';
-require_once 'core/telegram.php'; // [ NEW V7.0 ] Inject Telegram Engine
+require_once 'core/telegram.php'; // [ V7.0 ] Inject Telegram Engine
 
 // ==========================================
 // 🛡️ ANTI-BRUTE FORCE LOCKOUT PROTOCOL
@@ -267,8 +307,9 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
 try {
     // 🌐 [ V6.2 THE NOMADIC RE-SYNC DISPATCHER ]
     if (isset($_POST['action']) && $_POST['action'] === 'nomadic_resync') {
-        $new_url = trim($_POST['new_url']);
-        $old_url = trim($_POST['old_url']);
+        // 🛡️ [ V7.1 ] Input Sanitization
+        $new_url = filter_var(trim($_POST['new_url']), FILTER_SANITIZE_URL);
+        $old_url = filter_var(trim($_POST['old_url']), FILTER_SANITIZE_URL);
         
         $db->prepare("DELETE FROM system_config WHERE config_key = 'local_planet_url'")->execute();
         $stmt = $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('local_planet_url', :val)");
@@ -296,17 +337,18 @@ try {
     }
 
     if (isset($_POST['action']) && $_POST['action'] === 'save_control_room') {
-        $name = trim($_POST['station_name'] ?? 'RELAY_STATION');
-        $bio = trim($_POST['station_bio'] ?? '');
+        // 🛡️ [ V7.1 ] Extreme Input Sanitization
+        $name = strip_tags(trim($_POST['station_name'] ?? 'RELAY_STATION'));
+        $bio = strip_tags(trim($_POST['station_bio'] ?? ''));
         $bunker = ($_POST['bunker_mode'] === '1') ? '1' : '0';
         $lighthouse = ($_POST['lighthouse_opt'] === '1') ? '1' : '0';
         $new_pass = trim($_POST['station_passcode'] ?? '');
-        $enc_priv = trim($_POST['encrypted_privkey'] ?? ''); 
+        $enc_priv = strip_tags(trim($_POST['encrypted_privkey'] ?? '')); 
         
-        // 👁️ [ V7.0 THE ORACLE: CONFIGS ]
+        // 👁️ [ V7.0 THE ORACLE: CONFIGS WITH SANITIZATION ]
         $tel_enabled = ($_POST['telegram_enabled'] === '1') ? '1' : '0';
-        $tel_token = trim($_POST['telegram_bot_token'] ?? '');
-        $tel_chat = trim($_POST['telegram_chat_id'] ?? '');
+        $tel_token = strip_tags(trim($_POST['telegram_bot_token'] ?? ''));
+        $tel_chat = strip_tags(trim($_POST['telegram_chat_id'] ?? ''));
 
         $db->prepare("DELETE FROM system_config WHERE config_key IN ('station_name', 'station_bio', 'bunker_mode', 'lighthouse_opt', 'telegram_enabled', 'telegram_bot_token', 'telegram_chat_id')")->execute();
         
@@ -370,8 +412,9 @@ try {
     }
 
     if (isset($_POST['action']) && $_POST['action'] === 'save_keys') {
-        $pubkey = trim($_POST['public_key'] ?? '');
-        $enc_priv = trim($_POST['encrypted_privkey'] ?? '');
+        // 🛡️ [ V7.1 ] Input Sanitization
+        $pubkey = strip_tags(trim($_POST['public_key'] ?? ''));
+        $enc_priv = strip_tags(trim($_POST['encrypted_privkey'] ?? ''));
         
         if (!empty($pubkey)) {
             $db->prepare("DELETE FROM system_config WHERE config_key = 'public_key'")->execute();
@@ -631,9 +674,9 @@ try {
             </div>
             <div class="t-nav-menu">
                 <button onclick="document.getElementById('control-room-modal').style.display='flex';" class="t-btn t-btn-sm" title="Configure Station">[ ⚙️ ]</button>
-                <button id="installAppBtn" class="t-btn t-btn-sm">[ 📥 ]</button>
+                <button id="installAppBtn" class="t-btn t-btn-sm" title="Install PWA">[ 📥 ]</button>
                 <a href="core/updater.php" class="t-btn warning t-btn-sm" title="Check System Update">[ 🔄 ]</a>
-                <a href="console.php?logout=true" class="t-btn danger t-btn-sm">[ ➜] ]</a>
+                <a href="console.php?logout=true" class="t-btn danger t-btn-sm" title="Logout">[ ➜] ]</a>
             </div>
         </nav>
 
@@ -878,6 +921,7 @@ try {
                         <div class="mt-2 fs-small text-muted">
                             > Download your core memory before migrating to a new domain. Restore it later to activate the <strong>Token Re-Sync Protocol</strong>.
                             <a href="console.php?escape_pod=true" class="t-btn success t-btn-sm w-100 mt-2 text-center" style="text-decoration:none; display:block;">[ 📥 EXPORT CORE DATABASE ]</a>
+                            <a href="console.php?export_station=true" class="t-btn warning t-btn-sm w-100 mt-2 text-center font-bold" style="text-decoration:none; display:block;">[ 📦 BACKUP WHOLE STATION (ZIP) ]</a>
                         </div>
                     </div>
 

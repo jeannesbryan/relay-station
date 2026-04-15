@@ -1,24 +1,24 @@
 <?php
 require_once 'ssl_shield.php';
 // ==========================================================
-// 🚀 RELAY STATION: TRANSMITTER ENGINE (V6.2)
+// 🚀 RELAY STATION: TRANSMITTER ENGINE (v7.1)
 // Handles Public, Direct, Ghost Protocol, Media, Sonar Pulse, ACKs, 
 // and Scorched Earth & Global Purge Protocols.
-// Now equipped with Symmetric Handshake Token injector.
+// Now equipped with Symmetric Handshake Token injector & Advanced HTML Sanitization.
 // ==========================================================
 
 date_default_timezone_set('UTC'); // Enforce UTC to prevent Ghost Protocol timing issues
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
-    // 1. Capture Console Input
-    $content = trim($_POST['content'] ?? '');
+    // 1. [ V7.1 ] Capture & Sanitize Console Input (Local Defense)
+    $content = strip_tags(trim($_POST['content'] ?? ''));
     
-    // [ E2E ] Capture specific ciphertext for local database
-    $content_local = trim($_POST['content_local'] ?? $content); 
+    // [ E2E ] Capture specific ciphertext for local database (Sanitized)
+    $content_local = strip_tags(trim($_POST['content_local'] ?? $content)); 
     
-    $visibility = $_POST['visibility'] ?? 'public';
-    $target_planet = trim($_POST['target_planet'] ?? '');
+    $visibility = strip_tags(trim($_POST['visibility'] ?? 'public'));
+    $target_planet = filter_var(trim($_POST['target_planet'] ?? ''), FILTER_SANITIZE_URL);
     
     // 2. Detect Ghost Protocol (Self-destruct timer)
     $is_ghost = isset($_POST['ghost_protocol']) ? true : false;
@@ -230,7 +230,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
         } elseif (in_array($visibility, ['direct', 'sonar_pulse', 'ack_receipt', 'scorched_earth'])) {
-            // [ LASER LINK / TACTICAL PULSES ] Fire specific message/ping to single target
+            // [ LASER LINK / TACTICAL Pulses ] Fire specific message/ping to single target
             if (!empty($target_planet)) {
                 $target_clean = rtrim($target_planet, '/');
                 if (strpos($target_clean, 'http') !== 0) {

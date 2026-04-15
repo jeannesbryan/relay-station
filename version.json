@@ -1,7 +1,7 @@
 {
-    "version": "7.0",
-    "codename": "The Oracle Update",
+    "version": "7.1",
+    "codename": "The Fortress Update",
     "status": "stable",
-    "changelog": "THE ORACLE UPDATE (v7.0):\n- [SYSTEM] The Oracle: Real-time Telegram Webhook integration. Receive instant radar alerts on your smartphone for critical station activities.\n- [SECURITY] Login Sentinel: Immediate Telegram notification upon successful Commander logins or detected brute-force breach attempts.\n- [P2P] Radar Alerts: Real-time notification pulse for incoming Laser Links (DMs), Handshake signals (New Followers), and tactical Sonar Pulses.\n- [CORE] Integrated Telegram Engine: Lightweight, zero-dependency cURL messenger located in core/telegram.php.\n- [DOCS] Added TELEGRAM.md: Comprehensive tactical guide for setting up the Telegram Bot courier.",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v7.0/Relay-OTA-Update-v7.0.zip"
+    "changelog": "THE FORTRESS UPDATE (v7.1):\n- [SECURITY] Advanced HTML Sanitization: Added extreme data purging (strip_tags, filter_var) across all endpoints to prevent XSS injections from foreign nodes.\n- [SYSTEM] The Station Archive: New one-click 'Backup Whole Station' feature exports the entire source code, media, and SQLite database as a ZIP file for seamless complete migrations.\n- [CORE] Data Collision Mitigation: Injected PRAGMA busy_timeout into the core memory engine to eliminate SQLITE_BUSY errors during simultaneous high-traffic P2P bombardments.",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v7.1/Relay-OTA-Update-v7.1.zip"
 }

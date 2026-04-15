@@ -231,7 +231,7 @@ try {
 
         <footer class="text-center text-muted t-border-top pt-4 pb-5 mt-5">
             <p class="mb-2">> SIGNAL STATUS: <?php echo ($bunker_mode == '1') ? '<span class="text-danger">[ LOCKED ]</span>' : '<span class="text-success">[ BROADCASTING ]</span>'; ?></p>
-            <p class="fs-small m-0">STATION_OS v<?php echo htmlspecialchars($station_version); ?> | COORDINATES: <?php echo htmlspecialchars($station_coordinates); ?></p>
+            <p class="fs-small m-0"><a href="https://github.com/jeannesbryan/relay-station" target="_blank" class="text-muted" style="text-decoration: underline;">RELAY_STATION v<?php echo htmlspecialchars($station_version); ?></a></p>
         </footer>
     </div>
 
