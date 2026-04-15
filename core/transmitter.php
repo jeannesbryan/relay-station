@@ -1,10 +1,10 @@
 <?php
 require_once 'ssl_shield.php';
 // ==========================================================
-// 🚀 RELAY STATION: TRANSMITTER ENGINE (v7.1)
+// 🚀 RELAY STATION: TRANSMITTER ENGINE (V7.2)
 // Handles Public, Direct, Ghost Protocol, Media, Sonar Pulse, ACKs, 
-// and Scorched Earth & Global Purge Protocols.
-// Now equipped with Symmetric Handshake Token injector & Advanced HTML Sanitization.
+// Scorched Earth, Global Purge, and the new SIGNAL RESONANCE.
+// Equipped with Symmetric Handshake Token, WAF Bypass, & Spam Ping Mitigation.
 // ==========================================================
 
 date_default_timezone_set('UTC'); // Enforce UTC to prevent Ghost Protocol timing issues
@@ -13,12 +13,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // 1. [ V7.1 ] Capture & Sanitize Console Input (Local Defense)
     $content = strip_tags(trim($_POST['content'] ?? ''));
-    
-    // [ E2E ] Capture specific ciphertext for local database (Sanitized)
     $content_local = strip_tags(trim($_POST['content_local'] ?? $content)); 
-    
     $visibility = strip_tags(trim($_POST['visibility'] ?? 'public'));
     $target_planet = filter_var(trim($_POST['target_planet'] ?? ''), FILTER_SANITIZE_URL);
+    
+    // [ V7.2 ] Capture Post ID for Resonance Protocol
+    $post_id = (int)($_POST['post_id'] ?? 0); 
     
     // 2. Detect Ghost Protocol (Self-destruct timer)
     $is_ghost = isset($_POST['ghost_protocol']) ? true : false;
@@ -27,11 +27,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $expiry_date = date('Y-m-d H:i:s', strtotime('+24 hours'));
     }
 
-    // 3. Identify Local Commander Coordinates (Subfolder Aware)
+    // 3. Identify Local Commander Coordinates
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
     $host = $_SERVER['HTTP_HOST'];
     
-    // Track dynamic folder path
     $script_path = dirname($_SERVER['SCRIPT_NAME']); 
     $base_path = dirname($script_path); 
     if ($base_path === '\\' || $base_path === '/') {
@@ -41,7 +40,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $my_planet_url = rtrim($protocol . $host . $base_path, '/');
     $author_alias = 'LOCAL_COMMAND'; 
     
-    // Prevent empty payload transmission (Unless it's a structural purge signal)
     if ($content === '' && $visibility !== 'scorched_earth') {
         $redirect = ($visibility === 'direct') ? '../direct.php' : '../console.php';
         header("Location: $redirect?error=empty_payload");
@@ -56,25 +54,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header("Location: ../console.php?error=invalid_sonar");
             exit;
         }
-        $content = strtoupper($content); // Force uppercase for Morse Payload
+        $content = strtoupper($content); 
     }
 
     // 🚀 [ TACTICAL SIGNAL CLASSIFICATION ]
-    // Signals that bypass media processing and local database insertion
-    $tactical_signals = ['sonar_pulse', 'ack_receipt', 'scorched_earth', 'global_purge'];
+    // Signals that bypass media processing and standard insertion
+    $tactical_signals = ['sonar_pulse', 'ack_receipt', 'scorched_earth', 'global_purge', 'resonance'];
 
     // ==========================================
     // 🖼️ & 🎙️ [ ADVANCED MEDIA MATRIX ]
     // ==========================================
     $final_media_url = null;
-    $media_urls = []; // Container for all processed media
+    $media_urls = []; 
 
-    // Skip media processing for Tactical Signals
     if (!in_array($visibility, $tactical_signals)) {
         $upload_dir = '../media/';
         if (!is_dir($upload_dir)) { mkdir($upload_dir, 0755, true); }
 
-        // Priority 1: Capture Base64 from JS Compressor (WebP/Array)
         if (!empty($_POST['media_base64'])) {
             $mb_raw = trim($_POST['media_base64']);
             $mb_items = [];
@@ -100,14 +96,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } 
         
-        // Priority 1.5: Capture Base64 from PTT Audio Recorder (WebM/Ogg)
         if (!empty($_POST['audio_base64'])) {
             $audio_base64 = $_POST['audio_base64'];
             list($type, $audio_base64) = explode(';', $audio_base64);
             list(, $audio_base64)      = explode(',', $audio_base64);
             $media_data = base64_decode($audio_base64);
             
-            $ext = 'webm'; // Default fallback
+            $ext = 'webm'; 
             if (strpos($type, 'audio/mp4') !== false || strpos($type, 'video/mp4') !== false) $ext = 'm4a';
             elseif (strpos($type, 'audio/ogg') !== false || strpos($type, 'video/ogg') !== false) $ext = 'ogg';
 
@@ -119,10 +114,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
-        // Priority 2: Fallback if JS is disabled in browser (Raw Upload)
         if (empty($_POST['media_base64']) && isset($_FILES['media'])) {
             $files = $_FILES['media'];
-            
             $file_names = is_array($files['name']) ? $files['name'] : [$files['name']];
             $file_tmp_names = is_array($files['tmp_name']) ? $files['tmp_name'] : [$files['tmp_name']];
             $file_errors = is_array($files['error']) ? $files['error'] : [$files['error']];
@@ -146,19 +139,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // 🚧 [ TACTICAL LIMIT ]: Maksimal 4 Media (Grid 2x2)
         if (count($media_urls) > 4) {
             $media_urls = array_slice($media_urls, 0, 4);
         }
 
-        // 🗄️ [ SMART STORAGE FORMATTER ]
         if (count($media_urls) === 1) {
             $final_media_url = $media_urls[0];
         } elseif (count($media_urls) > 1) {
             $final_media_url = json_encode($media_urls, JSON_UNESCAPED_SLASHES);
         }
     }
-    // ==========================================
 
     // 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
     require_once 'db_connect.php';
@@ -176,34 +166,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':media' => $final_media_url
             ]);
         }
+
+        // ==========================================
+        // ⚡ [ V7.2 ] SIGNAL RESONANCE (ROGER THAT) - LOCAL SAVE & ANTI-SPAM
+        // ==========================================
+        if ($visibility === 'resonance') {
+            if ($post_id <= 0) {
+                header('Content-Type: application/json');
+                echo json_encode(['status' => 'error', 'message' => '[ CORRUPTED SIGNAL ] Missing target ID.']);
+                exit;
+            }
+
+            // 🛑 LAPIS 1: MITIGASI SPAM PING
+            // Jika kita sudah pernah me-Resonansi postingan ini, batalkan peluncuran peluru cURL.
+            $stmt_check = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = :pid AND reactor_url = :my_url");
+            $stmt_check->execute([':pid' => $post_id, ':my_url' => $my_planet_url]);
+            if ($stmt_check->fetchColumn() > 0) {
+                header('Content-Type: application/json');
+                echo json_encode(['status' => 'error', 'message' => '[ ANTI-SPAM ] Signal already acknowledged. Transmission aborted.']);
+                exit;
+            }
+
+            // Simpan ke memori lokal agar UI kita (console.php) tahu tombol sudah ditekan
+            $stmt_res = $db->prepare("INSERT INTO signal_resonance (post_id, reactor_url, reactor_alias, resonance_type) VALUES (:pid, :my_url, :alias, :type)");
+            $stmt_res->execute([
+                ':pid' => $post_id,
+                ':my_url' => $my_planet_url,
+                ':alias' => $author_alias,
+                ':type' => $content // Menyimpan tipe (misal: 'roger')
+            ]);
+        }
         
         // 5. ASSEMBLE BASE JSON CAPSULE
-        $base_payload = [
-            "content" => $content, 
-            "author_alias" => $author_alias,
-            "from_planet" => $my_planet_url,
-            "visibility" => $visibility,
-            "expiry_date" => $expiry_date,
-            "media_url" => $final_media_url
-        ];
+        if ($visibility === 'resonance') {
+            $base_payload = [
+                "action" => "resonance",
+                "post_id" => $post_id,
+                "reactor" => $author_alias,
+                "type" => $content,
+                "from_planet" => $my_planet_url
+            ];
+        } else {
+            $base_payload = [
+                "content" => $content, 
+                "author_alias" => $author_alias,
+                "from_planet" => $my_planet_url,
+                "visibility" => $visibility,
+                "expiry_date" => $expiry_date,
+                "media_url" => $final_media_url
+            ];
+        }
 
         // --- [ TRANSMISSION ROUTING ] ---
 
         if ($visibility === 'public' || $visibility === 'global_purge') {
-            // [ SCATTER BEAM ] Broadcast to all allies in the Star Chart
-            // [ V6.2 ] Fetch Handshake Tokens for each ally to bypass their Anti-Spoofing firewall
+            // [ SCATTER BEAM ] Broadcast to all allies
             $query = $db->query("SELECT planet_url, handshake_token FROM following");
             $allies = $query->fetchAll(PDO::FETCH_ASSOC);
             
             if (count($allies) > 0) {
-                // Machine Gun (Multi-cURL)
                 $mh = curl_multi_init();
                 $curl_array = [];
                 
                 foreach ($allies as $i => $ally) {
                     $target_url = rtrim($ally['planet_url'], '/') . '/api_inbox.php';
                     
-                    // Inject Unique Token for this specific ally
                     $ally_payload = $base_payload;
                     $ally_payload['handshake_token'] = $ally['handshake_token'] ?? '';
                     $json_payload = json_encode($ally_payload);
@@ -214,23 +241,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     curl_setopt($curl_array[$i], CURLOPT_POSTFIELDS, $json_payload);
                     curl_setopt($curl_array[$i], CURLOPT_HTTPHEADER, [
                         'Content-Type: application/json',
-                        'Content-Length: ' . strlen($json_payload)
+                        'Content-Length: ' . strlen($json_payload),
+                        'User-Agent: RelayStation-Transmitter/7.2' // [ V7.2 ] WAF Bypass
                     ]);
                     curl_setopt($curl_array[$i], CURLOPT_TIMEOUT, 5); 
                     curl_multi_add_handle($mh, $curl_array[$i]);
                 }
                 
-                // Fire simultaneously
                 $running = null;
                 do { curl_multi_exec($mh, $running); } while ($running);
                 
-                // Clean up execution handles
                 foreach ($allies as $i => $ally) { curl_multi_remove_handle($mh, $curl_array[$i]); }
                 curl_multi_close($mh);
             }
 
-        } elseif (in_array($visibility, ['direct', 'sonar_pulse', 'ack_receipt', 'scorched_earth'])) {
-            // [ LASER LINK / TACTICAL Pulses ] Fire specific message/ping to single target
+        } elseif (in_array($visibility, ['direct', 'sonar_pulse', 'ack_receipt', 'scorched_earth', 'resonance'])) {
+            // [ LASER LINK / TACTICAL Pulses ] Fire specific message to single target
             if (!empty($target_planet)) {
                 $target_clean = rtrim($target_planet, '/');
                 if (strpos($target_clean, 'http') !== 0) {
@@ -239,7 +265,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 $target_url = $target_clean . '/api_inbox.php';
                 
-                // [ V6.2 ] Fetch token specifically for this target
                 $stmt_tk = $db->prepare("SELECT handshake_token FROM following WHERE planet_url = :url");
                 $stmt_tk->execute([':url' => $target_clean]);
                 $hs_token = $stmt_tk->fetchColumn() ?: '';
@@ -248,14 +273,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $direct_payload['handshake_token'] = $hs_token;
                 $json_payload = json_encode($direct_payload);
                 
-                // Single cURL execution
                 $ch = curl_init($target_url);
                 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                 curl_setopt($ch, CURLOPT_POST, true);
                 curl_setopt($ch, CURLOPT_POSTFIELDS, $json_payload);
                 curl_setopt($ch, CURLOPT_HTTPHEADER, [
                     'Content-Type: application/json',
-                    'Content-Length: ' . strlen($json_payload)
+                    'Content-Length: ' . strlen($json_payload),
+                    'User-Agent: RelayStation-Transmitter/7.2' // [ V7.2 ] WAF Bypass
                 ]);
                 curl_setopt($ch, CURLOPT_TIMEOUT, 5); 
                 curl_exec($ch);
@@ -264,21 +289,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         // Mission complete, return to appropriate Radar
-        if (in_array($visibility, ['ack_receipt', 'scorched_earth', 'global_purge'])) {
-            // Sinyal ini ditembak via AJAX (Latar Belakang), jangan lakukan redirect!
+        if (in_array($visibility, ['ack_receipt', 'scorched_earth', 'global_purge', 'resonance'])) {
             header('Content-Type: application/json');
             echo json_encode(['status' => 'success', 'message' => "[ TACTICAL SIGNAL $visibility FIRED ]"]);
             exit;
         } elseif ($visibility === 'direct') {
             header("Location: ../direct.php?status=transmission_successful");
         } else {
-            // For both Public and Sonar Pulses
             header("Location: ../console.php?status=transmission_successful");
         }
         exit;
 
     } catch (PDOException $e) {
-        if (in_array($visibility, ['ack_receipt', 'scorched_earth', 'global_purge'])) {
+        if (in_array($visibility, ['ack_receipt', 'scorched_earth', 'global_purge', 'resonance'])) {
             header('Content-Type: application/json');
             echo json_encode(['status' => 'error']);
             exit;

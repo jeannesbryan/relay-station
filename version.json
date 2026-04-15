@@ -1,7 +1,7 @@
 {
-    "version": "7.1",
-    "codename": "The Fortress Update",
+    "version": "7.2",
+    "codename": "The Social Signal Update",
     "status": "stable",
-    "changelog": "THE FORTRESS UPDATE (v7.1):\n- [SECURITY] Advanced HTML Sanitization: Added extreme data purging (strip_tags, filter_var) across all endpoints to prevent XSS injections from foreign nodes.\n- [SYSTEM] The Station Archive: New one-click 'Backup Whole Station' feature exports the entire source code, media, and SQLite database as a ZIP file for seamless complete migrations.\n- [CORE] Data Collision Mitigation: Injected PRAGMA busy_timeout into the core memory engine to eliminate SQLITE_BUSY errors during simultaneous high-traffic P2P bombardments.",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v7.1/Relay-OTA-Update-v7.1.zip"
+    "changelog": "THE SOCIAL SIGNAL UPDATE (v7.2):\n- [SOCIAL] Signal Resonance: Introduced the '[ 📻 ROGER THAT ]' tactical resonance button for decentralized P2P interactions without heavy replies, complete with Anti-Spam Ping mitigation.\n- [SYSTEM] The Memory Vault: Added a dedicated Bookmarks vault (bookmarks.php) powered by INNER JOIN architecture, automatically purging saved posts if the origin node executes a Global Purge or Ghost Protocol.\n- [SECURITY] Symmetric Key Exchange: Annihilated the 401 Spoofing Paradox bug by enforcing a bi-directional Handshake Token sync during the follow sequence, ensuring perfect cryptographic alignment.",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v7.2/Relay-OTA-Update-v7.2.zip"
 }

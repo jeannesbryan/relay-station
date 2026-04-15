@@ -50,6 +50,11 @@ try {
             $author = htmlspecialchars($msg['author_alias'] ?? 'LOCAL_COMMAND');
             $img = '';
             
+            // ⚡ [ V7.2 ] Hitung jumlah Roger That untuk AJAX Loader
+            $stmt_res_count = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ?");
+            $stmt_res_count->execute([$msg['id']]);
+            $res_count = $stmt_res_count->fetchColumn();
+
             // 🗄️ V5.5 ADVANCED MEDIA MATRIX RENDERER (AJAX)
             if (!empty($msg['media_url'])) {
                 $media_items = [];
@@ -85,6 +90,9 @@ try {
                         <span>[ {$msg['timestamp']} UTC ] LOCAL_TRANSMISSION: <strong class='text-success'>$author</strong></span>
                     </div>
                     <p class='m-0' style='font-size: 14px;'>".nl2br(htmlspecialchars($msg['content']))."</p> $img
+                    <div class='mt-3 pt-2 text-right' style='border-top: 1px dashed rgba(0,255,65,0.2);'>
+                        <span class='fs-small text-muted' style='font-size: 11px;'>ROGER_COUNT: <strong class='text-success'>{$res_count}</strong></span>
+                    </div>
                   </div>";
         }
         exit;
@@ -167,6 +175,12 @@ try {
                             <div class="text-center text-muted py-5 t-border border-dashed">[ NO LOCAL BROADCASTS DETECTED ]</div>
                         <?php else: ?>
                             <?php foreach ($transmissions as $msg): ?>
+                                <?php
+                                    // ⚡ [ V7.2 ] Hitung jumlah Roger That untuk Load Awal
+                                    $stmt_res_count = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ?");
+                                    $stmt_res_count->execute([$msg['id']]);
+                                    $res_count = $stmt_res_count->fetchColumn();
+                                ?>
                                 <div class="t-card mb-3 p-3 transmission-card" data-id="<?php echo $msg['id']; ?>">
                                     <div class="t-bubble-meta t-border-bottom pb-2 mb-2">
                                         <span>
@@ -215,6 +229,11 @@ try {
                                             <?php endforeach; ?>
                                         </div>
                                     <?php endif; endif; ?>
+
+                                    <div class='mt-3 pt-2 text-right' style='border-top: 1px dashed rgba(0,255,65,0.2);'>
+                                        <span class='fs-small text-muted' style='font-size: 11px;'>ROGER_COUNT: <strong class='text-success'><?php echo $res_count; ?></strong></span>
+                                    </div>
+                                    
                                 </div>
                             <?php endforeach; ?>
                         <?php endif; ?>

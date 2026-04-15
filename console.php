@@ -305,6 +305,30 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
 // 🚀 [ MAIN DASHBOARD PROCESSOR ]
 // ==========================================
 try {
+
+    // 🌐 [ THE LOCAL COORDINATES GENERATOR ]
+    // Prepare this early so we can use it in Resonance validation and Nomad logic
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+    $host = $_SERVER['HTTP_HOST'];
+    $base_path = dirname($_SERVER['SCRIPT_NAME']);
+    if ($base_path === '\\' || $base_path === '/') $base_path = '';
+    $current_local_url = rtrim($protocol . $host . $base_path, '/');
+
+    // 📌 [ V7.2 ] ACTION PROCESSOR: TOGGLE BOOKMARK
+    if (isset($_POST['action']) && $_POST['action'] === 'toggle_bookmark') {
+        $tid = (int)$_POST['id'];
+        $stmt_check = $db->prepare("SELECT id FROM bookmarks WHERE transmission_id = ?");
+        $stmt_check->execute([$tid]);
+        if ($stmt_check->fetchColumn()) {
+            $db->prepare("DELETE FROM bookmarks WHERE transmission_id = ?")->execute([$tid]);
+            echo "REMOVED";
+        } else {
+            $db->prepare("INSERT INTO bookmarks (transmission_id) VALUES (?)")->execute([$tid]);
+            echo "SAVED";
+        }
+        exit;
+    }
+
     // 🌐 [ V6.2 THE NOMADIC RE-SYNC DISPATCHER ]
     if (isset($_POST['action']) && $_POST['action'] === 'nomadic_resync') {
         // 🛡️ [ V7.1 ] Input Sanitization
@@ -378,24 +402,18 @@ try {
         }
 
         // 🗼 THE LIGHTHOUSE FIRE PROTOCOL (PHP Side)
-        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
-        $host = $_SERVER['HTTP_HOST'];
-        $base_path = dirname($_SERVER['SCRIPT_NAME']);
-        if ($base_path === '\\' || $base_path === '/') $base_path = '';
-        $my_planet_url = rtrim($protocol . $host . $base_path, '/');
-        
         $ping_data = '';
         if ($lighthouse === '1') {
             $ping_data = json_encode([
                 'action' => 'ping',
-                'planet_url' => $my_planet_url,
+                'planet_url' => $current_local_url,
                 'station_name' => $name,
                 'station_bio' => $bio
             ]);
         } else {
             $ping_data = json_encode([
                 'action' => 'kill',
-                'planet_url' => $my_planet_url
+                'planet_url' => $current_local_url
             ]);
         }
         
@@ -459,6 +477,9 @@ try {
     }
     $db->exec("DELETE FROM transmissions WHERE visibility = 'public' AND is_remote = 1 AND timestamp <= datetime('now', '-30 days')");
 
+    // ==========================================
+    // 🔄 [ AJAX ENDPOINT: CURSOR-BASED PAGINATION ]
+    // ==========================================
     if (isset($_GET['last_id'])) {
         $last_id = (int)$_GET['last_id'];
         $stmt = $db->prepare("SELECT * FROM transmissions WHERE visibility = 'public' AND id < :last_id ORDER BY id DESC LIMIT 15");
@@ -470,6 +491,32 @@ try {
             $ghost = !empty($msg['expiry_date']) ? '<span class="t-badge danger t-flicker">[ 👻 GHOSTED ]</span>' : '';
             $src = $msg['is_remote'] ? 'INCOMING FROM:' : 'LOCAL_AUTHOR:';
             $content = nl2br(htmlspecialchars($msg['content']));
+
+            // ⚡ [ V7.2 ] Resonance & Bookmark Check
+            $stmt_res_count = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ?");
+            $stmt_res_count->execute([$msg['id']]);
+            $res_count = $stmt_res_count->fetchColumn();
+
+            $stmt_my_res = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ? AND reactor_url = ?");
+            $stmt_my_res->execute([$msg['id'], $current_local_url]);
+            $has_roger = $stmt_my_res->fetchColumn() > 0;
+
+            $stmt_book = $db->prepare("SELECT COUNT(*) FROM bookmarks WHERE transmission_id = ?");
+            $stmt_book->execute([$msg['id']]);
+            $is_saved = $stmt_book->fetchColumn() > 0;
+
+            $target_planet_url = '';
+            if ($msg['is_remote'] == 1) {
+                $parts = explode('@', $msg['author_alias']);
+                if (count($parts) > 1) {
+                    $target_planet_url = 'https://' . end($parts);
+                }
+            }
+
+            $roger_btn_text = $has_roger ? '[ ✓ ACKNOWLEDGED ]' : '[ 📻 ROGER THAT ]';
+            $roger_btn_class = $has_roger ? 'success' : '';
+            $book_btn_text = $is_saved ? '[ 📌 SAVED ]' : '[ 📌 BOOKMARK ]';
+            $book_btn_class = $is_saved ? 'warning' : '';
             
             $img = '';
             if (!empty($msg['media_url'])) {
@@ -512,6 +559,13 @@ try {
                         </div>
                     </div>
                     <p class='m-0 timeline-msg' style='font-size: 14px;'>$content</p> $img
+                    <div class='mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2' style='border-top: 1px dashed rgba(0,255,65,0.2);'>
+                        <div class='d-flex gap-2'>
+                            <button type='button' onclick=\"toggleRogerThat(this, {$msg['id']}, '{$target_planet_url}')\" class='t-btn t-btn-sm {$roger_btn_class}' style='padding: 2px 6px; font-size: 10px;'>{$roger_btn_text}</button>
+                            <button type='button' onclick=\"toggleBookmark(this, {$msg['id']})\" class='t-btn t-btn-sm {$book_btn_class}' style='padding: 2px 6px; font-size: 10px;'>{$book_btn_text}</button>
+                        </div>
+                        <span class='fs-small text-muted' style='font-size: 11px;'>ROGER_COUNT: <strong class='text-success'>{$res_count}</strong></span>
+                    </div>
                   </div>";
         }
         exit;
@@ -560,12 +614,6 @@ try {
     $stmt_local = $db->query("SELECT config_value FROM system_config WHERE config_key = 'local_planet_url' ORDER BY rowid DESC LIMIT 1");
     $stored_local_url = $stmt_local ? $stmt_local->fetchColumn() : '';
     
-    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
-    $host = $_SERVER['HTTP_HOST'];
-    $base_path = dirname($_SERVER['SCRIPT_NAME']);
-    if ($base_path === '\\' || $base_path === '/') $base_path = '';
-    $current_local_url = rtrim($protocol . $host . $base_path, '/');
-
     $trigger_nomadic_resync = false;
     if (!empty($stored_local_url) && $stored_local_url !== $current_local_url) {
         $trigger_nomadic_resync = true;
@@ -717,6 +765,32 @@ try {
                         <?php foreach ($transmissions as $msg): 
                             $is_me = ($msg['is_remote'] == 0);
                             $author_disp = htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN');
+
+                            // ⚡ [ V7.2 ] Resonance & Bookmark Check
+                            $stmt_res_count = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ?");
+                            $stmt_res_count->execute([$msg['id']]);
+                            $res_count = $stmt_res_count->fetchColumn();
+
+                            $stmt_my_res = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ? AND reactor_url = ?");
+                            $stmt_my_res->execute([$msg['id'], $current_local_url]);
+                            $has_roger = $stmt_my_res->fetchColumn() > 0;
+
+                            $stmt_book = $db->prepare("SELECT COUNT(*) FROM bookmarks WHERE transmission_id = ?");
+                            $stmt_book->execute([$msg['id']]);
+                            $is_saved = $stmt_book->fetchColumn() > 0;
+
+                            $target_planet_url = '';
+                            if ($msg['is_remote'] == 1) {
+                                $parts = explode('@', $msg['author_alias']);
+                                if (count($parts) > 1) {
+                                    $target_planet_url = 'https://' . end($parts);
+                                }
+                            }
+
+                            $roger_btn_text = $has_roger ? '[ ✓ ACKNOWLEDGED ]' : '[ 📻 ROGER THAT ]';
+                            $roger_btn_class = $has_roger ? 'success' : '';
+                            $book_btn_text = $is_saved ? '[ 📌 SAVED ]' : '[ 📌 BOOKMARK ]';
+                            $book_btn_class = $is_saved ? 'warning' : '';
                         ?>
                             <div class="t-card mb-3 p-3 transmission-card" data-id="<?php echo $msg['id']; ?>" data-raw-content="<?php echo htmlspecialchars($msg['content'], ENT_QUOTES); ?>">
                                 <div class="t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap gap-2">
@@ -774,6 +848,15 @@ try {
                                         <?php endforeach; ?>
                                     </div>
                                 <?php endif; endif; ?>
+
+                                <div class='mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2' style='border-top: 1px dashed rgba(0,255,65,0.2);'>
+                                    <div class='d-flex gap-2'>
+                                        <button type='button' onclick="toggleRogerThat(this, <?php echo $msg['id']; ?>, '<?php echo htmlspecialchars($target_planet_url); ?>')" class='t-btn t-btn-sm <?php echo $roger_btn_class; ?>' style='padding: 2px 6px; font-size: 10px;'><?php echo $roger_btn_text; ?></button>
+                                        <button type='button' onclick="toggleBookmark(this, <?php echo $msg['id']; ?>)" class='t-btn t-btn-sm <?php echo $book_btn_class; ?>' style='padding: 2px 6px; font-size: 10px;'><?php echo $book_btn_text; ?></button>
+                                    </div>
+                                    <span class='fs-small text-muted' style='font-size: 11px;'>ROGER_COUNT: <strong class='text-success'><?php echo $res_count; ?></strong></span>
+                                </div>
+
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -792,6 +875,9 @@ try {
                 <div class="t-list-group mb-4">
                     <a href="console.php" class="t-list-item active">
                         <span class="t-list-item-title">> 🌐 TIMELINE</span>
+                    </a>
+                    <a href="bookmarks.php" class="t-list-item">
+                        <span class="t-list-item-title">> 📌 BOOKMARKS</span>
                     </a>
                     <a href="direct.php" class="t-list-item">
                         <span class="t-list-item-title">> ✉️ DIRECT MESSAGES</span>
@@ -974,6 +1060,60 @@ try {
 
     <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
+        // ==========================================
+        // ⚡ [ V7.2 ] THE SOCIAL SIGNAL ENGINE
+        // ==========================================
+        async function toggleRogerThat(btn, id, target) {
+            if (btn.classList.contains('success')) return; // Already rogered
+            
+            btn.innerText = '[ TRANSMITTING... ]';
+            btn.disabled = true;
+            
+            const fd = new FormData();
+            fd.append('visibility', 'resonance');
+            fd.append('post_id', id);
+            fd.append('target_planet', target);
+            fd.append('content', 'roger');
+            
+            try {
+                const res = await fetch('core/transmitter.php', { method: 'POST', body: fd });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    btn.innerText = '[ ✓ ACKNOWLEDGED ]';
+                    btn.classList.add('success');
+                } else {
+                    btn.innerText = '[ 📻 ROGER THAT ]';
+                    btn.disabled = false;
+                    Terminal.toast(data.message, 'danger');
+                }
+            } catch(e) {
+                btn.innerText = '[ 📻 ROGER THAT ]';
+                btn.disabled = false;
+            }
+        }
+
+        async function toggleBookmark(btn, id) {
+            btn.disabled = true;
+            const fd = new FormData();
+            fd.append('action', 'toggle_bookmark');
+            fd.append('id', id);
+            
+            try {
+                const res = await fetch('console.php', { method: 'POST', body: fd });
+                const status = await res.text();
+                
+                if (status.trim() === 'SAVED') {
+                    btn.innerText = '[ 📌 SAVED ]';
+                    btn.classList.add('warning');
+                } else {
+                    btn.innerText = '[ 📌 BOOKMARK ]';
+                    btn.classList.remove('warning');
+                }
+            } catch(e) {}
+            btn.disabled = false;
+        }
+
         // ==========================================
         // 👁️ [ V7.0 THE ORACLE: UI TOGGLE ]
         // ==========================================

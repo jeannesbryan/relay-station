@@ -1,10 +1,10 @@
 <?php
 require_once 'core/ssl_shield.php';
 // ==========================================
-// 📡 RELAY STATION: ATMOSPHERIC SHIELD & INBOX (v7.1)
+// 📡 RELAY STATION: ATMOSPHERIC SHIELD & INBOX (v7.2)
 // Endpoint to receive incoming signals (POST) from foreign nodes. 
 // Equipped with Anti-Spam, Anti-Spoofing, Re-Sync, Scorched Earth Firewalls,
-// The Oracle (Telegram Webhooks), and Advanced HTML Sanitization.
+// The Oracle (Telegram Webhooks), Advanced HTML Sanitization, and Resonance Protocol.
 // ==========================================
 
 header('Content-Type: application/json');
@@ -31,83 +31,73 @@ if (isset($signal['action']) && $signal['action'] === 'resync') {
         $old_url = rtrim($signal['old_url'], '/');
         if (strpos($old_url, 'http') !== 0) $old_url = 'https://' . $old_url;
         
-        $new_url = rtrim($signal['new_url'], '/');
+        $new_url = filter_var(trim($signal['new_url']), FILTER_SANITIZE_URL);
+        $new_url = rtrim($new_url, '/');
         if (strpos($new_url, 'http') !== 0) $new_url = 'https://' . $new_url;
         
-        // 🛡️ Advanced Sanitization for Re-Sync
-        $old_url = filter_var($old_url, FILTER_SANITIZE_URL);
-        $new_url = filter_var($new_url, FILTER_SANITIZE_URL);
-        $token = isset($signal['handshake_token']) ? strip_tags(trim($signal['handshake_token'])) : '';
-        
-        // Authenticate via token and update Star Chart
-        $stmt = $db->prepare("UPDATE following SET planet_url = :new_url WHERE planet_url = :old_url AND handshake_token = :token");
-        $stmt->execute([':new_url' => $new_url, ':old_url' => $old_url, ':token' => $token]);
-        
-        if ($stmt->rowCount() > 0) {
-            // Also heal the followers list to maintain mutual linkage
-            $stmt2 = $db->prepare("UPDATE followers SET planet_url = :new_url WHERE planet_url = :old_url");
-            $stmt2->execute([':new_url' => $new_url, ':old_url' => $old_url]);
+        $handshake_token = trim($signal['handshake_token'] ?? '');
+
+        $stmt_check = $db->prepare("SELECT handshake_token FROM following WHERE planet_url = :url");
+        $stmt_check->execute([':url' => $old_url]);
+        $valid_token = $stmt_check->fetchColumn();
+
+        if ($valid_token && $valid_token === $handshake_token) {
+            $stmt_upd = $db->prepare("UPDATE following SET planet_url = :new_url WHERE planet_url = :old_url");
+            $stmt_upd->execute([':new_url' => $new_url, ':old_url' => $old_url]);
             
+            $stmt_upd_f = $db->prepare("UPDATE followers SET planet_url = :new_url WHERE planet_url = :old_url");
+            $stmt_upd_f->execute([':new_url' => $new_url, ':old_url' => $old_url]);
+
             http_response_code(200);
-            echo json_encode(['status' => 'success', 'message' => '[ RE-SYNC ACCEPTED ] Star Chart coordinates updated to new domain.']);
+            echo json_encode(['status' => 'success', 'message' => '[ RE-SYNC APPROVED ] Coordinates updated.']);
         } else {
             http_response_code(401);
-            echo json_encode(['status' => 'error', 'message' => '[ RE-SYNC REJECTED ] Invalid token or node not found in Star Chart.']);
+            echo json_encode(['status' => 'error', 'message' => '[ RE-SYNC REJECTED ] Invalid cryptographic token.']);
         }
+        exit;
     } catch (PDOException $e) {
         http_response_code(500);
-        echo json_encode(['status' => 'error', 'message' => '[ CORE FAILURE ] Database malfunction during re-sync.']);
-    }
-    exit;
-}
-
-// ==========================================
-// 🛡️ 3. [ V7.1 ADVANCED SIGNAL VALIDATION & SANITIZATION ]
-// ==========================================
-if (!$signal || empty($signal['content']) || empty($signal['author_alias']) || empty($signal['from_planet'])) {
-    http_response_code(400);
-    echo json_encode(['status' => 'error', 'message' => '[ CORRUPTED SIGNAL ] Incomplete data capsule.']);
-    exit;
-}
-
-// 🧹 Extreme Data Purging: Strip all malicious HTML/PHP tags before processing
-$content = strip_tags(trim($signal['content']));
-$author = strip_tags(trim($signal['author_alias']));
-
-// 🧹 URL Specific Sanitization
-$from_planet = filter_var(trim($signal['from_planet']), FILTER_SANITIZE_URL);
-
-// 🧹 Optional Data Sanitization
-$visibility = isset($signal['visibility']) ? strip_tags(trim($signal['visibility'])) : 'public';
-$expiry_date = isset($signal['expiry_date']) ? strip_tags(trim($signal['expiry_date'])) : null; 
-$handshake_token = isset($signal['handshake_token']) ? strip_tags(trim($signal['handshake_token'])) : null;
-
-// 🧹 Media URL Sanitization (Must preserve Base64 strings and JSON structure)
-$media_url = !empty($signal['media_url']) ? strip_tags(trim($signal['media_url'])) : null;
-
-
-// ==========================================
-// 🛡️ [ DOUBLE SHIELD PROTOCOL: SONAR VALIDATION ]
-// ==========================================
-if ($visibility === 'sonar_pulse') {
-    // Check for alphanumeric and max 15 characters
-    if (!preg_match('/^[a-zA-Z0-9]{1,15}$/', $content)) {
-        http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => '[ CORRUPTED SONAR ] Invalid tactical code. Alpha-numeric only (Max 15).']);
+        echo json_encode(['status' => 'error', 'message' => 'Core Memory Malfunction.']);
         exit;
     }
-    // Force uppercase for the Morse Synthesizer
-    $content = strtoupper($content);
 }
 
-// 🕵️ [ ANTI-SPOOFING ] Capture physical IP of the sender
+// 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
+require_once 'core/db_connect.php';
+require_once 'core/telegram.php'; // [ V7.0 THE ORACLE ]
+
 $sender_ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN';
 
-// 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) & THE ORACLE ]
-require_once 'core/db_connect.php';
-require_once 'core/telegram.php'; // [ V7.0 ]
-
 try {
+    // ==========================================
+    // 🛡️ [ FIREWALL: RATE LIMITER (ANTI-SPAM) ]
+    // Limit: 5 signals per 60 seconds per IP
+    // ==========================================
+    $db->exec("CREATE TABLE IF NOT EXISTS rate_limits (ip_address TEXT, timestamp DATETIME)");
+    $db->exec("DELETE FROM rate_limits WHERE timestamp <= datetime('now', '-60 seconds')");
+    
+    $stmt_rate = $db->prepare("SELECT COUNT(*) FROM rate_limits WHERE ip_address = :ip");
+    $stmt_rate->execute([':ip' => $sender_ip]);
+    if ($stmt_rate->fetchColumn() >= 5) {
+        http_response_code(429);
+        echo json_encode(['status' => 'error', 'message' => '[ SHIELD REFLECTED ] Transmission rate limit exceeded.']);
+        exit;
+    }
+    $db->prepare("INSERT INTO rate_limits (ip_address, timestamp) VALUES (:ip, datetime('now'))")->execute([':ip' => $sender_ip]);
+
+    // ==========================================
+    // 🛡️ [ PAYLOAD SANITIZATION & EXTRACTION ]
+    // ==========================================
+    $from_planet = filter_var(trim($signal['from_planet'] ?? ''), FILTER_SANITIZE_URL);
+    $handshake_token = trim($signal['handshake_token'] ?? '');
+    $visibility = strip_tags(trim($signal['visibility'] ?? 'public'));
+    
+    if (empty($from_planet)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => '[ SHIELD REFLECTED ] Missing origin coordinates.']);
+        exit;
+    }
+
     // ==========================================
     // 🛡️ [ FIREWALL: STAR CHART & ANTI-SPOOFING ]
     // ==========================================
@@ -126,10 +116,10 @@ try {
             'status' => 'error', 
             'message' => '[ FIREWALL REFLECTED ] Access denied. Your node is not registered in our Star Chart.'
         ]);
-        exit; // Reject landing, do not save to SQLite!
+        exit; 
     }
 
-    // 🛡️ [ V6.2 ] STRICT ANTI-SPOOFING VERIFICATION
+    // 🛡️ [ V7.2 ] STRICT ANTI-SPOOFING VERIFICATION (RESTORED - PARADOX FIXED)
     if (!empty($allied_node['handshake_token']) && $allied_node['handshake_token'] !== $handshake_token) {
         http_response_code(401); 
         echo json_encode([
@@ -139,90 +129,140 @@ try {
         exit;
     }
 
-    // 🛑 [ TRUE RATE LIMITING (BY IP / PLANET) ] Max 5 messages per minute
-    if ($visibility === 'sonar_pulse') {
-        $stmt_rl = $db->prepare("SELECT COUNT(*) FROM alerts WHERE type = 'sonar_pulse' AND from_planet = :url AND timestamp >= datetime('now', '-1 minute')");
-        $stmt_rl->execute([':url' => $normalized_from]);
-        if ($stmt_rl->fetchColumn() >= 5) {
-            http_response_code(429);
-            echo json_encode(['status' => 'error', 'message' => '[ RATE LIMIT ] Max 5 transmissions per minute. Delay your broadcast.']);
-            exit;
+    // ==========================================
+    // ⚡ [ V7.2 ] SIGNAL RESONANCE RECEIVER (ROGER THAT)
+    // ==========================================
+    if (isset($signal['action']) && $signal['action'] === 'resonance') {
+        $post_id = (int)($signal['post_id'] ?? 0);
+        $reactor_alias = strip_tags(trim($signal['reactor'] ?? 'UNKNOWN'));
+        $type = strip_tags(trim($signal['type'] ?? 'roger'));
+
+        if ($post_id > 0) {
+            // INSERT OR IGNORE mitigates Spam Pings at the database level
+            $stmt_res = $db->prepare("INSERT OR IGNORE INTO signal_resonance (post_id, reactor_url, reactor_alias, resonance_type) VALUES (:pid, :url, :alias, :type)");
+            $stmt_res->execute([
+                ':pid' => $post_id,
+                ':url' => $normalized_from,
+                ':alias' => $reactor_alias,
+                ':type' => $type
+            ]);
         }
-    } elseif ($visibility !== 'ack_receipt' && $visibility !== 'scorched_earth' && $visibility !== 'global_purge') { 
-        $stmt_rl = $db->prepare("SELECT COUNT(*) FROM transmissions WHERE sender_ip = :ip AND timestamp >= datetime('now', '-1 minute')");
-        $stmt_rl->execute([':ip' => $sender_ip]);
-        if ($stmt_rl->fetchColumn() >= 5) {
-            http_response_code(429);
-            echo json_encode(['status' => 'error', 'message' => '[ RATE LIMIT ] Max 5 transmissions per minute. Delay your broadcast.']);
-            exit;
+        
+        http_response_code(200);
+        echo json_encode(['status' => 'success', 'message' => '[ RESONANCE ACKNOWLEDGED ]']);
+        exit;
+    }
+
+    // ==========================================
+    // 🔥 [ SCORCHED EARTH & GLOBAL PURGE PROTOCOLS ]
+    // ==========================================
+    $content = strip_tags(trim($signal['content'] ?? ''));
+
+    if ($visibility === 'scorched_earth') {
+        $stmt_del = $db->prepare("DELETE FROM transmissions WHERE is_remote = 1 AND target_planet = :my_url AND author_alias = :author");
+        $stmt_del->execute([':my_url' => $my_planet_url ?? '', ':author' => strip_tags($signal['author_alias'] ?? '')]);
+        
+        http_response_code(200);
+        echo json_encode(['status' => 'success', 'message' => '[ SCORCHED EARTH EXECUTED ]']);
+        exit;
+    }
+
+    if ($visibility === 'global_purge') {
+        $stmt_purge = $db->prepare("DELETE FROM transmissions WHERE content = :content AND is_remote = 1");
+        $stmt_purge->execute([':content' => $content]);
+        
+        http_response_code(200);
+        echo json_encode(['status' => 'success', 'message' => '[ GLOBAL PURGE EXECUTED ]']);
+        exit;
+    }
+
+    // ==========================================
+    // 📡 [ TACTICAL SONAR PULSE ]
+    // ==========================================
+    if ($visibility === 'sonar_pulse') {
+        $stmt_alert_check = $db->prepare("SELECT COUNT(*) FROM alerts WHERE type = 'sonar_pulse' AND from_planet = :url AND is_read = 0");
+        $stmt_alert_check->execute([':url' => $normalized_from]);
+        
+        if ($stmt_alert_check->fetchColumn() == 0) {
+            $stmt = $db->prepare("INSERT INTO alerts (type, from_planet, payload, is_read) VALUES ('sonar_pulse', :url, :payload, 0)");
+            $stmt->execute([':url' => $normalized_from, ':payload' => $content]);
+
+            // 👁️ [ V7.0 THE ORACLE: SONAR ALERT ]
+            sendTelegramAlert("📡 *TACTICAL SONAR DETECTED*\nIncoming ping from: `" . $normalized_from . "`\nPayload: `" . $content . "`");
+        }
+        
+        http_response_code(200);
+        echo json_encode(['status' => 'success', 'message' => '[ SONAR DOCKED ]']);
+        exit;
+    }
+
+    // ==========================================
+    // ✓ [ THE ACK PROTOCOL (READ RECEIPT) ]
+    // ==========================================
+    if ($visibility === 'ack_receipt') {
+        $stmt_ack = $db->prepare("UPDATE transmissions SET status = 'read' WHERE content = :content AND is_remote = 0");
+        $stmt_ack->execute([':content' => $content]);
+        
+        http_response_code(200);
+        echo json_encode(['status' => 'success', 'message' => '[ ACKNOWLEDGED ]']);
+        exit;
+    }
+
+    // ==========================================
+    // 📥 [ STANDARD TRANSMISSION PROCESSING ]
+    // ==========================================
+    if (empty($content)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => '[ SHIELD REFLECTED ] Empty payload.']);
+        exit;
+    }
+
+    $author = strip_tags(trim($signal['author_alias'] ?? 'UNKNOWN'));
+    $formatted_author = $author . '@' . parse_url($normalized_from, PHP_URL_HOST);
+    $expiry_date = $signal['expiry_date'] ?? null;
+    
+    $media_url = null;
+    if (!empty($signal['media_url'])) {
+        // Check if media is an array (JSON) or string
+        if (is_array($signal['media_url'])) {
+            $sanitized_media = array_map('filter_var', $signal['media_url'], array_fill(0, count($signal['media_url']), FILTER_SANITIZE_URL));
+            $media_url = json_encode($sanitized_media, JSON_UNESCAPED_SLASHES);
+        } else {
+            $media_url = filter_var($signal['media_url'], FILTER_SANITIZE_URL);
         }
     }
-    // ==========================================
 
-    // Auto-Format Alias: sendername@domain.com/folder
-    $parsed_url = parse_url($normalized_from);
-    $domain_host = $parsed_url['host'] ?? 'UNKNOWN';
-    $path = isset($parsed_url['path']) ? rtrim($parsed_url['path'], '/') : '';
-    $formatted_author = htmlspecialchars(str_replace(' ', '', $author) . '@' . $domain_host . $path);
+    // Cek duplikasi sinyal
+    $stmt_dup = $db->prepare("SELECT COUNT(*) FROM transmissions WHERE content = :content AND author_alias = :author AND timestamp >= datetime('now', '-5 minutes')");
+    $stmt_dup->execute([':content' => $content, ':author' => $formatted_author]);
+    if ($stmt_dup->fetchColumn() > 0) {
+        http_response_code(200);
+        echo json_encode(['status' => 'success', 'message' => '[ DUPLICATE REFLECTED ] Signal already exists.']);
+        exit;
+    }
 
-    // ==========================================
-    // 🔀 [ SIGNAL ROUTER (DIVERGENT STORAGE) ]
-    // ==========================================
-    if ($visibility === 'sonar_pulse') {
-        // 📡 [ SONAR PULSE ] Save as lightweight alert, NOT transmission
-        $stmt_sonar = $db->prepare("INSERT INTO alerts (type, from_planet, payload, is_read) VALUES ('sonar_pulse', :url, :payload, 0)");
-        $stmt_sonar->execute([
-            ':url' => $normalized_from,
-            ':payload' => $content
-        ]);
+    // 🗄️ Simpan ke Core Memory
+    $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, is_remote, author_alias, expiry_date, media_url, sender_ip) VALUES (:content, :visibility, 1, :author, :expiry, :media_url, :ip)");
+    $stmt->execute([
+        ':content' => $content,
+        ':visibility' => $visibility,
+        ':author' => $formatted_author,
+        ':expiry' => $expiry_date ? strip_tags($expiry_date) : null,
+        ':media_url' => $media_url, 
+        ':ip' => $sender_ip
+    ]);
 
-        // 👁️ [ V7.0 THE ORACLE: SONAR ALERT ]
-        sendTelegramAlert("📡 *TACTICAL SONAR DETECTED*\nIncoming Morse code pulse from: `" . $normalized_from . "`\nLogin to decode.");
+    // 🔔 [ NOTIFICATION TRIGGER: NEW DIRECT MESSAGE ]
+    if ($visibility === 'direct') {
+        $stmt_alert_check = $db->prepare("SELECT COUNT(*) FROM alerts WHERE type = 'new_dm' AND from_planet = :url AND is_read = 0");
+        $stmt_alert_check->execute([':url' => $normalized_from]);
         
-    } elseif ($visibility === 'ack_receipt') {
-        // 📩 [ ACK PROTOCOL ] Change local outbox status to READ (Centang Biru)
-        $stmt_ack = $db->prepare("UPDATE transmissions SET status = 'read' WHERE visibility = 'direct' AND is_remote = 0 AND target_planet = :url AND status = 'sent'");
-        $stmt_ack->execute([':url' => $normalized_from]);
-        
-    } elseif ($visibility === 'scorched_earth') {
-        // 🔥 [ SCORCHED EARTH PROTOCOL ] Destroy all DMs involving this sender
-        $like_author = '%' . $domain_host . '%';
-        $stmt_scorch = $db->prepare("DELETE FROM transmissions WHERE visibility = 'direct' AND (author_alias LIKE :a1 OR target_planet LIKE :a2)");
-        $stmt_scorch->execute([':a1' => $like_author, ':a2' => $like_author]);
-        
-    } elseif ($visibility === 'global_purge') {
-        // 🔥 [ GLOBAL PURGE PROTOCOL ] Destroy a specific public post by this sender matching the content
-        $stmt_purge = $db->prepare("DELETE FROM transmissions WHERE visibility = 'public' AND author_alias = :author AND content = :content");
-        $stmt_purge->execute([
-            ':author' => $formatted_author,
-            ':content' => htmlspecialchars($content) 
-        ]);
-        
-    } else {
-        // 📩 [ STANDARD TRANSMISSION ] Save to main chat logs
-        // Note: htmlspecialchars() adds a second layer of defense (Defense in Depth)
-        $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, is_remote, author_alias, expiry_date, media_url, sender_ip) VALUES (:content, :visibility, 1, :author, :expiry, :media_url, :ip)");
-        $stmt->execute([
-            ':content' => htmlspecialchars($content),
-            ':visibility' => htmlspecialchars($visibility),
-            ':author' => $formatted_author,
-            ':expiry' => $expiry_date ? htmlspecialchars($expiry_date) : null,
-            ':media_url' => $media_url, 
-            ':ip' => $sender_ip
-        ]);
+        if ($stmt_alert_check->fetchColumn() == 0) {
+            $stmt_alert = $db->prepare("INSERT INTO alerts (type, from_planet, is_read) VALUES ('new_dm', :url, 0)");
+            $stmt_alert->execute([':url' => $normalized_from]);
 
-        // 🔔 [ NOTIFICATION TRIGGER: NEW DIRECT MESSAGE ]
-        if ($visibility === 'direct') {
-            $stmt_alert_check = $db->prepare("SELECT COUNT(*) FROM alerts WHERE type = 'new_dm' AND from_planet = :url AND is_read = 0");
-            $stmt_alert_check->execute([':url' => $normalized_from]);
-            
-            if ($stmt_alert_check->fetchColumn() == 0) {
-                $stmt_alert = $db->prepare("INSERT INTO alerts (type, from_planet, is_read) VALUES ('new_dm', :url, 0)");
-                $stmt_alert->execute([':url' => $normalized_from]);
-
-                // 👁️ [ V7.0 THE ORACLE: DM ALERT ]
-                sendTelegramAlert("✉️ *INCOMING LASER LINK*\nEncrypted direct message received from: `" . $normalized_from . "`\nLogin to decrypt and read.");
-            }
+            // 👁️ [ V7.0 THE ORACLE: DM ALERT ]
+            sendTelegramAlert("✉️ *INCOMING LASER LINK*\nEncrypted direct message received from: `" . $normalized_from . "`\nLogin to decrypt and read.");
         }
     }
 
@@ -235,5 +275,5 @@ try {
 
 } catch (PDOException $e) {
     http_response_code(500);
-    echo json_encode(['status' => 'error', 'message' => '[ INTERNAL FAILURE ] Core Memory reactor malfunction.']);
+    echo json_encode(['status' => 'error', 'message' => 'Core Memory Malfunction.']);
 }
