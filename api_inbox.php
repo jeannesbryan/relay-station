@@ -1,10 +1,9 @@
 <?php
 require_once 'core/ssl_shield.php';
 // ==========================================
-// 📡 RELAY STATION: ATMOSPHERIC SHIELD & INBOX (v7.2)
+// 📡 RELAY STATION: ATMOSPHERIC SHIELD & INBOX (v7.3)
 // Endpoint to receive incoming signals (POST) from foreign nodes. 
-// Equipped with Anti-Spam, Anti-Spoofing, Re-Sync, Scorched Earth Firewalls,
-// The Oracle (Telegram Webhooks), Advanced HTML Sanitization, and Resonance Protocol.
+// Equipped with Anti-Loop Shield, Cascading Purge, and The Relay Protocol.
 // ==========================================
 
 header('Content-Type: application/json');
@@ -21,10 +20,15 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $raw_payload = file_get_contents('php://input');
 $signal = json_decode($raw_payload, true);
 
+// 🌐 [ THE LOCAL COORDINATES GENERATOR ]
+$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+$host = $_SERVER['HTTP_HOST'];
+$base_path = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
+$my_planet_url = $protocol . $host . $base_path;
+
 // ==========================================
 // 🌐 [ V6.2 THE NOMADIC RE-SYNC RECEIVER ]
 // ==========================================
-// If this is a special nomadic pulse, intercept it before regular processing
 if (isset($signal['action']) && $signal['action'] === 'resync') {
     require_once 'core/db_connect.php';
     try {
@@ -88,9 +92,14 @@ try {
     // ==========================================
     // 🛡️ [ PAYLOAD SANITIZATION & EXTRACTION ]
     // ==========================================
-    $from_planet = filter_var(trim($signal['from_planet'] ?? ''), FILTER_SANITIZE_URL);
+    // V7.3 Fallback: console.php uses sender_planet, transmitter uses from_planet
+    $from_planet = filter_var(trim($signal['from_planet'] ?? $signal['sender_planet'] ?? ''), FILTER_SANITIZE_URL);
     $handshake_token = trim($signal['handshake_token'] ?? '');
     $visibility = strip_tags(trim($signal['visibility'] ?? 'public'));
+    
+    // 🔁 [ V7.3 THE RELAY PROTOCOL ]
+    $is_relay = isset($signal['is_relay']) ? (int)$signal['is_relay'] : 0;
+    $origin_id = strip_tags(trim($signal['origin_id'] ?? ''));
     
     if (empty($from_planet)) {
         http_response_code(400);
@@ -119,7 +128,7 @@ try {
         exit; 
     }
 
-    // 🛡️ [ V7.2 ] STRICT ANTI-SPOOFING VERIFICATION (RESTORED - PARADOX FIXED)
+    // 🛡️ [ V7.2 ] STRICT ANTI-SPOOFING VERIFICATION
     if (!empty($allied_node['handshake_token']) && $allied_node['handshake_token'] !== $handshake_token) {
         http_response_code(401); 
         echo json_encode([
@@ -138,7 +147,6 @@ try {
         $type = strip_tags(trim($signal['type'] ?? 'roger'));
 
         if ($post_id > 0) {
-            // INSERT OR IGNORE mitigates Spam Pings at the database level
             $stmt_res = $db->prepare("INSERT OR IGNORE INTO signal_resonance (post_id, reactor_url, reactor_alias, resonance_type) VALUES (:pid, :url, :alias, :type)");
             $stmt_res->execute([
                 ':pid' => $post_id,
@@ -154,25 +162,74 @@ try {
     }
 
     // ==========================================
-    // 🔥 [ SCORCHED EARTH & GLOBAL PURGE PROTOCOLS ]
+    // 🔥 [ SCORCHED EARTH PROTOCOL ]
     // ==========================================
     $content = strip_tags(trim($signal['content'] ?? ''));
 
     if ($visibility === 'scorched_earth') {
         $stmt_del = $db->prepare("DELETE FROM transmissions WHERE is_remote = 1 AND target_planet = :my_url AND author_alias = :author");
-        $stmt_del->execute([':my_url' => $my_planet_url ?? '', ':author' => strip_tags($signal['author_alias'] ?? '')]);
+        $stmt_del->execute([':my_url' => $my_planet_url, ':author' => strip_tags($signal['author_alias'] ?? '')]);
         
         http_response_code(200);
         echo json_encode(['status' => 'success', 'message' => '[ SCORCHED EARTH EXECUTED ]']);
         exit;
     }
 
-    if ($visibility === 'global_purge') {
-        $stmt_purge = $db->prepare("DELETE FROM transmissions WHERE content = :content AND is_remote = 1");
-        $stmt_purge->execute([':content' => $content]);
+    // ==========================================
+    // 💥 [ V7.3 ] THE CHAIN-PURGE (CASCADING GLOBAL PURGE)
+    // ==========================================
+    $is_global_purge = ($visibility === 'global_purge' || (isset($signal['action']) && $signal['action'] === 'global_purge'));
+    if ($is_global_purge) {
+        $purge_origin = strip_tags(trim($signal['origin_id'] ?? ''));
+        $purge_content = strip_tags(trim($signal['content'] ?? ''));
+        $deleted = false;
+
+        // Try to purge by Origin ID first (V7.3 standard)
+        if (!empty($purge_origin)) {
+            $stmt_check = $db->prepare("SELECT id FROM transmissions WHERE origin_id = :orig AND is_remote = 1");
+            $stmt_check->execute([':orig' => $purge_origin]);
+            if ($stmt_check->fetchColumn()) {
+                $db->prepare("DELETE FROM transmissions WHERE origin_id = :orig AND is_remote = 1")->execute([':orig' => $purge_origin]);
+                $deleted = true;
+            }
+        } 
+        // Fallback for older nodes targeting by exact content
+        elseif (!empty($purge_content)) {
+            $stmt_check = $db->prepare("SELECT id, origin_id FROM transmissions WHERE content = :content AND is_remote = 1");
+            $stmt_check->execute([':content' => $purge_content]);
+            $row = $stmt_check->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                $purge_origin = $row['origin_id']; 
+                $db->prepare("DELETE FROM transmissions WHERE content = :content AND is_remote = 1")->execute([':content' => $purge_content]);
+                $deleted = true;
+            }
+        }
+
+        // ⛓️ CASCADE EFFECT: If successfully deleted, forward the missile to our followers
+        if ($deleted) {
+            $followers = $db->query("SELECT planet_url FROM followers")->fetchAll(PDO::FETCH_COLUMN);
+            if (count($followers) > 0) {
+                $payload = json_encode([
+                    'action' => 'global_purge',
+                    'origin_id' => $purge_origin,
+                    'content' => $purge_content,
+                    'sender_planet' => $my_planet_url
+                ]);
+                foreach ($followers as $follower_url) {
+                    $ch = curl_init(rtrim($follower_url, '/') . '/api_inbox.php');
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_POST, true);
+                    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+                    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Content-Length: ' . strlen($payload)]);
+                    curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+                    @curl_exec($ch);
+                    @curl_close($ch);
+                }
+            }
+        }
         
         http_response_code(200);
-        echo json_encode(['status' => 'success', 'message' => '[ GLOBAL PURGE EXECUTED ]']);
+        echo json_encode(['status' => 'success', 'message' => '[ GLOBAL PURGE EXECUTED & CASCADED ]']);
         exit;
     }
 
@@ -209,6 +266,19 @@ try {
     }
 
     // ==========================================
+    // 🛡️ [ V7.3 ] THE ANTI-LOOP SHIELD (ECHO PREVENTION)
+    // ==========================================
+    if (!empty($origin_id)) {
+        $stmt_echo = $db->prepare("SELECT COUNT(*) FROM transmissions WHERE origin_id = :orig");
+        $stmt_echo->execute([':orig' => $origin_id]);
+        if ($stmt_echo->fetchColumn() > 0) {
+            http_response_code(200);
+            echo json_encode(['status' => 'success', 'message' => '[ ANTI-LOOP SHIELD ] Signal already exists. Echo chamber avoided.']);
+            exit;
+        }
+    }
+
+    // ==========================================
     // 📥 [ STANDARD TRANSMISSION PROCESSING ]
     // ==========================================
     if (empty($content)) {
@@ -232,7 +302,7 @@ try {
         }
     }
 
-    // Cek duplikasi sinyal
+    // Cek duplikasi sinyal lokal berdasarkan konten
     $stmt_dup = $db->prepare("SELECT COUNT(*) FROM transmissions WHERE content = :content AND author_alias = :author AND timestamp >= datetime('now', '-5 minutes')");
     $stmt_dup->execute([':content' => $content, ':author' => $formatted_author]);
     if ($stmt_dup->fetchColumn() > 0) {
@@ -242,10 +312,12 @@ try {
     }
 
     // 🗄️ Simpan ke Core Memory
-    $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, is_remote, author_alias, expiry_date, media_url, sender_ip) VALUES (:content, :visibility, 1, :author, :expiry, :media_url, :ip)");
+    $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, is_remote, is_relay, origin_id, author_alias, expiry_date, media_url, sender_ip) VALUES (:content, :visibility, 1, :is_relay, :origin_id, :author, :expiry, :media_url, :ip)");
     $stmt->execute([
         ':content' => $content,
         ':visibility' => $visibility,
+        ':is_relay' => $is_relay,
+        ':origin_id' => !empty($origin_id) ? $origin_id : null,
         ':author' => $formatted_author,
         ':expiry' => $expiry_date ? strip_tags($expiry_date) : null,
         ':media_url' => $media_url, 

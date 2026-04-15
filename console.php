@@ -46,7 +46,6 @@ if (isset($_GET['export_station']) && isset($_SESSION['relay_auth']) && $_SESSIO
                 $filePath = $file->getRealPath();
                 $relativePath = substr($filePath, strlen($dir) + 1);
                 
-                // Skip existing zip files to prevent infinite recursion/bloat
                 $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
                 if ($ext !== 'zip' && $ext !== 'log') {
                     $zip->addFile($filePath, $relativePath);
@@ -59,7 +58,7 @@ if (isset($_GET['export_station']) && isset($_SESSION['relay_auth']) && $_SESSIO
         header('Content-Disposition: attachment; filename="' . $zip_filename . '"');
         header('Content-Length: ' . filesize($zip_filepath));
         readfile($zip_filepath);
-        @unlink($zip_filepath); // Clean up temp file
+        @unlink($zip_filepath); 
         exit;
     } else {
         die("[ CRITICAL ERROR ] Failed to create Station Archive. Ensure ZipArchive PHP extension is enabled.");
@@ -79,7 +78,7 @@ if (file_exists('version.json')) {
 
 // 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) & THE ORACLE ]
 require_once 'core/db_connect.php';
-require_once 'core/telegram.php'; // [ V7.0 ] Inject Telegram Engine
+require_once 'core/telegram.php'; 
 
 // ==========================================
 // 🛡️ ANTI-BRUTE FORCE LOCKOUT PROTOCOL
@@ -128,8 +127,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_login'])) {
             $db->prepare("DELETE FROM login_attempts WHERE ip_address = :ip")->execute([':ip' => $user_ip]);
         }
         $_SESSION['relay_auth'] = true;
-        
-        // 👁️ [ V7.0 THE ORACLE: LOGIN ALERT ]
         sendTelegramAlert("✅ *COMMANDER LOGIN DETECTED*\nAccess granted to Control Room.\nIP Address: `" . $user_ip . "`");
 
         echo json_encode(['status' => 'success']); 
@@ -141,10 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_login'])) {
                 $lock_time = date('Y-m-d H:i:s', strtotime('+15 minutes'));
                 $stmt = $db->prepare("UPDATE login_attempts SET attempts = :attempts, lockout_until = :lock_time WHERE ip_address = :ip");
                 $stmt->execute([':attempts' => $attempts, ':lock_time' => $lock_time, ':ip' => $user_ip]);
-                
-                // 👁️ [ V7.0 THE ORACLE: BRUTE-FORCE ALERT ]
                 sendTelegramAlert("🚨 *SECURITY BREACH ATTEMPT*\nRadar frozen for 15 minutes due to multiple failed logins.\nIP Address: `" . $user_ip . "`");
-
                 echo json_encode(['status' => 'error', 'message' => "SYSTEM LOCKED. WAIT 15 MINUTE(S)."]); 
                 exit;
             } else {
@@ -171,11 +165,8 @@ if (isset($_GET['logout'])) {
 // 🛡️ [ RENDER LOGIN SHIELD IF UNAUTHENTICATED ]
 // ==========================================
 if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
-    
-    // Pre-fetch Vault for JS Gatekeeper
     $stmt_key = $db->query("SELECT config_value FROM system_config WHERE config_key = 'encrypted_privkey' ORDER BY rowid DESC LIMIT 1");
     $pre_enc_priv = $stmt_key ? $stmt_key->fetchColumn() : '';
-    
     $stmt_pub = $db->query("SELECT config_value FROM system_config WHERE config_key = 'public_key' ORDER BY rowid DESC LIMIT 1");
     $pre_pub_key = $stmt_pub ? $stmt_pub->fetchColumn() : '';
 ?>
@@ -216,9 +207,6 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
 
     <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
-        // ==========================================
-        // 🔐 THE QUANTUM GATE ENGINE
-        // ==========================================
         const serverEncPriv = "<?php echo addslashes($pre_enc_priv); ?>";
         const serverPubKey = "<?php echo addslashes($pre_pub_key); ?>";
 
@@ -234,7 +222,6 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
             btn.innerText = '[ DECRYPTING_GATE... ]';
             if(alertBox) alertBox.style.display = 'none';
 
-            // Attempt Vault Decryption
             if (serverEncPriv) {
                 try {
                     const parts = serverEncPriv.split(':');
@@ -267,7 +254,6 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
                 }
             }
 
-            // Fire AJAX Login
             btn.innerText = '[ AUTHENTICATING... ]';
             const formData = new FormData();
             formData.append('ajax_login', '1');
@@ -307,7 +293,6 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
 try {
 
     // 🌐 [ THE LOCAL COORDINATES GENERATOR ]
-    // Prepare this early so we can use it in Resonance validation and Nomad logic
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
     $host = $_SERVER['HTTP_HOST'];
     $base_path = dirname($_SERVER['SCRIPT_NAME']);
@@ -329,9 +314,102 @@ try {
         exit;
     }
 
+    // 🔁 [ V7.3 ] ACTION PROCESSOR: RELAY POST (BLAST TO FOLLOWERS)
+    if (isset($_POST['action']) && $_POST['action'] === 'relay_post') {
+        $msg_id = (int)$_POST['msg_id'];
+        $origin_id = strip_tags($_POST['origin_id']);
+
+        $stmt = $db->prepare("SELECT * FROM transmissions WHERE id = ?");
+        $stmt->execute([$msg_id]);
+        $orig = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($orig) {
+            $content = $orig['content'];
+            $media = $orig['media_url'];
+            $author = $orig['author_alias'];
+            
+            $relay_content = "> [ 🔁 RELAYED FROM: {$author} ]\n" . $content;
+            
+            $stmt_name = $db->query("SELECT config_value FROM system_config WHERE config_key = 'station_name' ORDER BY rowid DESC LIMIT 1");
+            $my_name = $stmt_name->fetchColumn() ?: 'RELAY_STATION';
+            $my_alias = $my_name . '@' . $host;
+            
+            // Simpan ke lokal dengan is_remote = 0, is_relay = 1
+            $stmt_ins = $db->prepare("INSERT INTO transmissions (content, visibility, is_remote, is_relay, origin_id, author_alias, media_url, timestamp) VALUES (?, 'public', 0, 1, ?, ?, ?, CURRENT_TIMESTAMP)");
+            $stmt_ins->execute([$relay_content, $origin_id, $my_alias, $media]);
+            $new_relay_id = $db->lastInsertId();
+
+            // Tembakkan ke seluruh Follower secara diam-diam
+            $followers = $db->query("SELECT planet_url FROM followers")->fetchAll(PDO::FETCH_COLUMN);
+            if (count($followers) > 0) {
+                $payload = json_encode([
+                    'action' => 'broadcast',
+                    'visibility' => 'public',
+                    'content' => $relay_content,
+                    'author_alias' => $my_alias,
+                    'media_url' => $media,
+                    'is_relay' => 1,
+                    'origin_id' => $origin_id,
+                    'sender_planet' => $current_local_url
+                ]);
+                
+                foreach ($followers as $follower_url) {
+                    $ch = curl_init(rtrim($follower_url, '/') . '/api_inbox.php');
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_POST, true);
+                    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+                    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Content-Length: ' . strlen($payload)]);
+                    curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+                    @curl_exec($ch);
+                    @curl_close($ch);
+                }
+            }
+            echo json_encode(['status' => 'success', 'relay_id' => $new_relay_id]);
+            exit;
+        }
+        echo json_encode(['status' => 'error']);
+        exit;
+    }
+
+    // 🗑️ [ V7.3 ] ACTION PROCESSOR: UNRELAY POST (CHAIN PURGE)
+    if (isset($_POST['action']) && $_POST['action'] === 'unrelay_post') {
+        $id = (int)$_POST['id'];
+        
+        $stmt_get = $db->prepare("SELECT origin_id FROM transmissions WHERE id = ? AND is_remote = 0 AND is_relay = 1");
+        $stmt_get->execute([$id]);
+        $origin_id = $stmt_get->fetchColumn();
+        
+        if ($origin_id) {
+            $db->prepare("DELETE FROM transmissions WHERE id = ? AND is_remote = 0 AND is_relay = 1")->execute([$id]);
+            
+            $followers = $db->query("SELECT planet_url FROM followers")->fetchAll(PDO::FETCH_COLUMN);
+            if (count($followers) > 0) {
+                $payload = json_encode([
+                    'action' => 'global_purge',
+                    'origin_id' => $origin_id,
+                    'sender_planet' => $current_local_url
+                ]);
+                
+                foreach ($followers as $follower_url) {
+                    $ch = curl_init(rtrim($follower_url, '/') . '/api_inbox.php');
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_POST, true);
+                    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+                    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Content-Length: ' . strlen($payload)]);
+                    curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+                    @curl_exec($ch);
+                    @curl_close($ch);
+                }
+            }
+            echo "UNRELAYED";
+        } else {
+            echo "ERROR";
+        }
+        exit;
+    }
+
     // 🌐 [ V6.2 THE NOMADIC RE-SYNC DISPATCHER ]
     if (isset($_POST['action']) && $_POST['action'] === 'nomadic_resync') {
-        // 🛡️ [ V7.1 ] Input Sanitization
         $new_url = filter_var(trim($_POST['new_url']), FILTER_SANITIZE_URL);
         $old_url = filter_var(trim($_POST['old_url']), FILTER_SANITIZE_URL);
         
@@ -361,7 +439,6 @@ try {
     }
 
     if (isset($_POST['action']) && $_POST['action'] === 'save_control_room') {
-        // 🛡️ [ V7.1 ] Extreme Input Sanitization
         $name = strip_tags(trim($_POST['station_name'] ?? 'RELAY_STATION'));
         $bio = strip_tags(trim($_POST['station_bio'] ?? ''));
         $bunker = ($_POST['bunker_mode'] === '1') ? '1' : '0';
@@ -369,7 +446,6 @@ try {
         $new_pass = trim($_POST['station_passcode'] ?? '');
         $enc_priv = strip_tags(trim($_POST['encrypted_privkey'] ?? '')); 
         
-        // 👁️ [ V7.0 THE ORACLE: CONFIGS WITH SANITIZATION ]
         $tel_enabled = ($_POST['telegram_enabled'] === '1') ? '1' : '0';
         $tel_token = strip_tags(trim($_POST['telegram_bot_token'] ?? ''));
         $tel_chat = strip_tags(trim($_POST['telegram_chat_id'] ?? ''));
@@ -396,12 +472,10 @@ try {
             $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('encrypted_privkey', ?)")->execute([$enc_priv]);
         }
 
-        // 👁️ [ V7.0 THE ORACLE: TEST PING ]
         if ($tel_enabled === '1') {
             sendTelegramAlert("> ORACLE SYSTEM ONLINE. Radar is active.");
         }
 
-        // 🗼 THE LIGHTHOUSE FIRE PROTOCOL (PHP Side)
         $ping_data = '';
         if ($lighthouse === '1') {
             $ping_data = json_encode([
@@ -430,7 +504,6 @@ try {
     }
 
     if (isset($_POST['action']) && $_POST['action'] === 'save_keys') {
-        // 🛡️ [ V7.1 ] Input Sanitization
         $pubkey = strip_tags(trim($_POST['public_key'] ?? ''));
         $enc_priv = strip_tags(trim($_POST['encrypted_privkey'] ?? ''));
         
@@ -448,9 +521,36 @@ try {
         exit;
     }
     
+    // 💥 [ V7.3 CHAIN PURGE UPGRADE ]: Local Delete cascades origin_id purge
     if (isset($_POST['action']) && $_POST['action'] === 'delete_local') {
         $id = (int)$_POST['id'];
+        
+        $stmt_get = $db->prepare("SELECT origin_id, is_relay FROM transmissions WHERE id = ? AND is_remote = 0");
+        $stmt_get->execute([$id]);
+        $row = $stmt_get->fetch(PDO::FETCH_ASSOC);
+        
         $db->prepare("DELETE FROM transmissions WHERE id = ? AND is_remote = 0")->execute([$id]);
+        
+        if ($row && !empty($row['origin_id'])) {
+            $followers = $db->query("SELECT planet_url FROM followers")->fetchAll(PDO::FETCH_COLUMN);
+            if (count($followers) > 0) {
+                $payload = json_encode([
+                    'action' => 'global_purge',
+                    'origin_id' => $row['origin_id'],
+                    'sender_planet' => $current_local_url
+                ]);
+                foreach ($followers as $follower_url) {
+                    $ch = curl_init(rtrim($follower_url, '/') . '/api_inbox.php');
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_POST, true);
+                    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+                    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Content-Length: ' . strlen($payload)]);
+                    curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+                    @curl_exec($ch);
+                    @curl_close($ch);
+                }
+            }
+        }
         exit;
     }
     
@@ -487,9 +587,18 @@ try {
         $transmissions = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($transmissions as $msg) {
-            $author = htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN');
+            $is_relay_flag = isset($msg['is_relay']) ? (int)$msg['is_relay'] : 0;
+            $is_me = ($msg['is_remote'] == 0 && $is_relay_flag == 0);
+            $is_my_relay = ($msg['is_remote'] == 0 && $is_relay_flag == 1);
+            $author_disp = htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN');
+
+            $src_label = '';
+            if ($is_me) { $src_label = 'LOCAL_AUTHOR:'; }
+            elseif ($is_my_relay) { $src_label = '<span class="text-warning">[ 🔁 RELAYED_BY_ME ]</span>'; }
+            elseif ($is_relay_flag == 1) { $src_label = '<span class="text-warning">[ 🔁 RELAYED ]</span> INCOMING FROM:'; }
+            else { $src_label = 'INCOMING FROM:'; }
+            
             $ghost = !empty($msg['expiry_date']) ? '<span class="t-badge danger t-flicker">[ 👻 GHOSTED ]</span>' : '';
-            $src = $msg['is_remote'] ? 'INCOMING FROM:' : 'LOCAL_AUTHOR:';
             $content = nl2br(htmlspecialchars($msg['content']));
 
             // ⚡ [ V7.2 ] Resonance & Bookmark Check
@@ -521,11 +630,8 @@ try {
             $img = '';
             if (!empty($msg['media_url'])) {
                 $media_items = [];
-                if (strpos($msg['media_url'], '[') === 0) {
-                    $media_items = json_decode($msg['media_url'], true) ?? [];
-                } else {
-                    $media_items = [$msg['media_url']];
-                }
+                if (strpos($msg['media_url'], '[') === 0) { $media_items = json_decode($msg['media_url'], true) ?? []; } 
+                else { $media_items = [$msg['media_url']]; }
                 
                 $m_count = count($media_items);
                 if ($m_count > 0) {
@@ -536,25 +642,43 @@ try {
                         $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a']);
                         $is_video = in_array($ext, ['mp4']);
                         
-                        if ($is_audio) {
-                            $img .= '<div class="matrix-item audio-cell p-2"><button type="button" class="t-btn warning w-100 audio-play-btn" data-src="'.htmlspecialchars($url).'" style="font-size: 11px;">[ ▶️ PLAY AUDIO_LOG ]</button></div>';
-                        } elseif ($is_video) {
-                            $img .= '<div class="matrix-item"><video class="matrix-video" controls preload="metadata"><source src="'.htmlspecialchars($url).'" type="video/mp4"></video></div>';
-                        } else {
-                            $img .= '<div class="matrix-item"><img src="'.htmlspecialchars($url).'" class="matrix-img" alt="Secure Media"></div>';
-                        }
+                        if ($is_audio) { $img .= '<div class="matrix-item audio-cell p-2"><button type="button" class="t-btn warning w-100 audio-play-btn" data-src="'.htmlspecialchars($url).'" style="font-size: 11px;">[ ▶️ PLAY AUDIO_LOG ]</button></div>'; } 
+                        elseif ($is_video) { $img .= '<div class="matrix-item"><video class="matrix-video" controls preload="metadata"><source src="'.htmlspecialchars($url).'" type="video/mp4"></video></div>'; } 
+                        else { $img .= '<div class="matrix-item"><img src="'.htmlspecialchars($url).'" class="matrix-img" alt="Secure Media"></div>'; }
                     }
                     $img .= '</div>';
                 }
             }
             
-            $purge_btn = ($msg['is_remote'] == 0) ? "<button type='button' onclick='globalPurge(this, {$msg['id']})' class='t-btn danger t-btn-sm font-bold' style='padding: 1px 5px; font-size: 9px; line-height: 1;' title='Wipe Local & Allies Timeline'>[ 🔥 PURGE ]</button>" : '';
+            $purge_btn = '';
+            if ($is_me || $is_my_relay) {
+                $purge_btn = "<button type='button' onclick='globalPurge(this, {$msg['id']})' class='t-btn danger t-btn-sm font-bold' style='padding: 1px 5px; font-size: 9px; line-height: 1;' title='Wipe Local & Allies Timeline'>[ 🔥 PURGE ]</button>";
+            }
+
+            // 🔁 [ V7.3 ] RELAY BUTTON LOGIC
+            $relay_button_html = '';
+            $can_relay = ($msg['is_remote'] == 1);
+            if ($can_relay) {
+                $orig_raw_id = $msg['origin_id'] ?? '';
+                $global_origin_id = $orig_raw_id !== '' ? $orig_raw_id : hash('sha256', $msg['author_alias'] . $msg['content']);
+                
+                $stmt_check_relay = $db->prepare("SELECT id FROM transmissions WHERE is_remote = 0 AND is_relay = 1 AND origin_id = ?");
+                $stmt_check_relay->execute([$global_origin_id]);
+                $relay_id = $stmt_check_relay->fetchColumn();
+                $has_relayed = $relay_id > 0;
+
+                $relay_btn_text = $has_relayed ? '[ 🗑️ UNRELAY ]' : '[ 🔁 RELAY ]';
+                $relay_btn_class = $has_relayed ? 'danger' : 'warning';
+                $relay_onclick = $has_relayed ? "unrelayPost(this, {$relay_id}, {$msg['id']}, '{$global_origin_id}')" : "relayPost(this, {$msg['id']}, '{$global_origin_id}')";
+                
+                $relay_button_html = "<button type='button' id='relay-btn-{$msg['id']}' onclick=\"{$relay_onclick}\" class='t-btn t-btn-sm {$relay_btn_class}' style='padding: 2px 6px; font-size: 10px;'>{$relay_btn_text}</button>";
+            }
 
             echo "<div class='t-card mb-3 p-3 transmission-card' data-id='{$msg['id']}' data-raw-content='".htmlspecialchars($msg['content'], ENT_QUOTES)."'>
                     <div class='t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap gap-2'>
-                        <span>[ {$msg['timestamp']} UTC ] $src <strong class='text-success'>$author</strong> $ghost</span>
+                        <span>[ {$msg['timestamp']} UTC ] $src_label <strong class='text-success'>$author_disp</strong> $ghost</span>
                         <div class='d-flex gap-2'>
-                            <button type='button' onclick=\"quoteTimeline(this, '{$author}')\" class='t-btn t-btn-sm' style='padding: 1px 5px; font-size: 9px; line-height: 1; border-color: var(--t-green-dim); color: var(--t-green-dim);'>[ 💬 QUOTE ]</button>
+                            <button type='button' onclick=\"quoteTimeline(this, '{$author_disp}')\" class='t-btn t-btn-sm' style='padding: 1px 5px; font-size: 9px; line-height: 1; border-color: var(--t-green-dim); color: var(--t-green-dim);'>[ 💬 QUOTE ]</button>
                             $purge_btn
                         </div>
                     </div>
@@ -563,6 +687,7 @@ try {
                         <div class='d-flex gap-2'>
                             <button type='button' onclick=\"toggleRogerThat(this, {$msg['id']}, '{$target_planet_url}')\" class='t-btn t-btn-sm {$roger_btn_class}' style='padding: 2px 6px; font-size: 10px;'>{$roger_btn_text}</button>
                             <button type='button' onclick=\"toggleBookmark(this, {$msg['id']})\" class='t-btn t-btn-sm {$book_btn_class}' style='padding: 2px 6px; font-size: 10px;'>{$book_btn_text}</button>
+                            {$relay_button_html}
                         </div>
                         <span class='fs-small text-muted' style='font-size: 11px;'>ROGER_COUNT: <strong class='text-success'>{$res_count}</strong></span>
                     </div>
@@ -593,14 +718,12 @@ try {
     $stmt_bio = $db->query("SELECT config_value FROM system_config WHERE config_key = 'station_bio' ORDER BY rowid DESC LIMIT 1");
     $station_bio = $stmt_bio->fetchColumn() ?: '';
 
-    // 🔑 FETCH IDENTITY KEYS FOR VAULT SYNC
     $stmt_key = $db->query("SELECT config_value FROM system_config WHERE config_key = 'encrypted_privkey' ORDER BY rowid DESC LIMIT 1");
     $encrypted_privkey = $stmt_key ? $stmt_key->fetchColumn() : null;
 
     $stmt_pub = $db->query("SELECT config_value FROM system_config WHERE config_key = 'public_key' ORDER BY rowid DESC LIMIT 1");
     $server_pubkey = $stmt_pub ? $stmt_pub->fetchColumn() : null;
 
-    // 👁️ [ V7.0 THE ORACLE: FETCH CONFIGS ]
     $stmt_tel_en = $db->query("SELECT config_value FROM system_config WHERE config_key = 'telegram_enabled' ORDER BY rowid DESC LIMIT 1");
     $telegram_enabled = $stmt_tel_en ? $stmt_tel_en->fetchColumn() : '0';
 
@@ -610,7 +733,6 @@ try {
     $stmt_tel_chat = $db->query("SELECT config_value FROM system_config WHERE config_key = 'telegram_chat_id' ORDER BY rowid DESC LIMIT 1");
     $telegram_chat_id = $stmt_tel_chat ? $stmt_tel_chat->fetchColumn() : '';
 
-    // 🌐 [ V6.2 ] THE NOMADIC RE-SYNC RADAR (DETECT DOMAIN CHANGE)
     $stmt_local = $db->query("SELECT config_value FROM system_config WHERE config_key = 'local_planet_url' ORDER BY rowid DESC LIMIT 1");
     $stored_local_url = $stmt_local ? $stmt_local->fetchColumn() : '';
     
@@ -738,6 +860,7 @@ try {
                         <input type="hidden" name="visibility" value="public">
                         <input type="hidden" name="media_base64" id="media-base64">
                         <input type="hidden" name="audio_base64" id="audio-base64">
+                        <input type="hidden" name="origin_id" value="<?php echo hash('sha256', uniqid(mt_rand(), true)); ?>">
                         
                         <textarea name="content" rows="3" class="t-textarea" placeholder="> What's happening in your sector?"></textarea>
 
@@ -763,9 +886,17 @@ try {
                         <div class="text-center text-muted py-4 t-border border-dashed">[ TIMELINE IS EMPTY ]</div>
                     <?php else: ?>
                         <?php foreach ($transmissions as $msg): 
-                            $is_me = ($msg['is_remote'] == 0);
+                            $is_relay_flag = isset($msg['is_relay']) ? (int)$msg['is_relay'] : 0;
+                            $is_me = ($msg['is_remote'] == 0 && $is_relay_flag == 0);
+                            $is_my_relay = ($msg['is_remote'] == 0 && $is_relay_flag == 1);
                             $author_disp = htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN');
 
+                            $src_label = '';
+                            if ($is_me) { $src_label = 'LOCAL_AUTHOR:'; }
+                            elseif ($is_my_relay) { $src_label = '<span class="text-warning">[ 🔁 RELAYED_BY_ME ]</span>'; }
+                            elseif ($is_relay_flag == 1) { $src_label = '<span class="text-warning">[ 🔁 RELAYED ]</span> INCOMING FROM:'; }
+                            else { $src_label = 'INCOMING FROM:'; }
+                            
                             // ⚡ [ V7.2 ] Resonance & Bookmark Check
                             $stmt_res_count = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ?");
                             $stmt_res_count->execute([$msg['id']]);
@@ -791,20 +922,42 @@ try {
                             $roger_btn_class = $has_roger ? 'success' : '';
                             $book_btn_text = $is_saved ? '[ 📌 SAVED ]' : '[ 📌 BOOKMARK ]';
                             $book_btn_class = $is_saved ? 'warning' : '';
+                            
+                            $purge_btn = '';
+                            if ($is_me || $is_my_relay) {
+                                $purge_btn = "<button type='button' onclick='globalPurge(this, {$msg['id']})' class='t-btn danger t-btn-sm font-bold' style='padding: 1px 5px; font-size: 9px; line-height: 1;' title='Wipe Local & Allies Timeline'>[ 🔥 PURGE ]</button>";
+                            }
+
+                            // 🔁 [ V7.3 ] RELAY BUTTON LOGIC
+                            $relay_button_html = '';
+                            $can_relay = ($msg['is_remote'] == 1);
+                            if ($can_relay) {
+                                $orig_raw_id = $msg['origin_id'] ?? '';
+                                $global_origin_id = $orig_raw_id !== '' ? $orig_raw_id : hash('sha256', $msg['author_alias'] . $msg['content']);
+                                
+                                $stmt_check_relay = $db->prepare("SELECT id FROM transmissions WHERE is_remote = 0 AND is_relay = 1 AND origin_id = ?");
+                                $stmt_check_relay->execute([$global_origin_id]);
+                                $relay_id = $stmt_check_relay->fetchColumn();
+                                $has_relayed = $relay_id > 0;
+
+                                $relay_btn_text = $has_relayed ? '[ 🗑️ UNRELAY ]' : '[ 🔁 RELAY ]';
+                                $relay_btn_class = $has_relayed ? 'danger' : 'warning';
+                                $relay_onclick = $has_relayed ? "unrelayPost(this, {$relay_id}, {$msg['id']}, '{$global_origin_id}')" : "relayPost(this, {$msg['id']}, '{$global_origin_id}')";
+                                
+                                $relay_button_html = "<button type='button' id='relay-btn-{$msg['id']}' onclick=\"{$relay_onclick}\" class='t-btn t-btn-sm {$relay_btn_class}' style='padding: 2px 6px; font-size: 10px;'>{$relay_btn_text}</button>";
+                            }
                         ?>
                             <div class="t-card mb-3 p-3 transmission-card" data-id="<?php echo $msg['id']; ?>" data-raw-content="<?php echo htmlspecialchars($msg['content'], ENT_QUOTES); ?>">
                                 <div class="t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap gap-2">
                                     <span>
                                         [ <?php echo $msg['timestamp']; ?> UTC ] 
-                                        <?php echo $is_me ? 'LOCAL_AUTHOR:' : 'INCOMING FROM:'; ?> 
+                                        <?php echo $src_label; ?> 
                                         <strong class="text-success"><?php echo $author_disp; ?></strong>
                                         <?php if(!empty($msg['expiry_date'])) echo '<span class="t-badge danger t-flicker ml-2">[ 👻 GHOSTED ]</span>'; ?>
                                     </span>
                                     <div class="d-flex gap-2">
                                         <button type="button" onclick="quoteTimeline(this, '<?php echo $author_disp; ?>')" class="t-btn t-btn-sm" style="padding: 1px 5px; font-size: 9px; line-height: 1; border-color: var(--t-green-dim); color: var(--t-green-dim);">[ 💬 QUOTE ]</button>
-                                        <?php if($is_me): ?>
-                                            <button type="button" onclick="globalPurge(this, <?php echo $msg['id']; ?>)" class="t-btn danger t-btn-sm font-bold" style="padding: 1px 5px; font-size: 9px; line-height: 1;" title="Wipe Local & Allies Timeline">[ 🔥 PURGE ]</button>
-                                        <?php endif; ?>
+                                        <?php echo $purge_btn; ?>
                                     </div>
                                 </div>
                                 <p class="m-0 timeline-msg" style="font-size: 14px;">
@@ -813,11 +966,8 @@ try {
                                 
                                 <?php if(!empty($msg['media_url'])): 
                                     $media_items = [];
-                                    if (strpos($msg['media_url'], '[') === 0) {
-                                        $media_items = json_decode($msg['media_url'], true) ?? [];
-                                    } else {
-                                        $media_items = [$msg['media_url']];
-                                    }
+                                    if (strpos($msg['media_url'], '[') === 0) { $media_items = json_decode($msg['media_url'], true) ?? []; } 
+                                    else { $media_items = [$msg['media_url']]; }
                                     
                                     $m_count = count($media_items);
                                     if ($m_count > 0):
@@ -830,20 +980,12 @@ try {
                                         ?>
                                             <?php if($is_audio): ?>
                                                 <div class="matrix-item audio-cell p-2">
-                                                    <button type="button" class="t-btn warning w-100 audio-play-btn" data-src="<?php echo htmlspecialchars($url); ?>" style="font-size: 11px;">
-                                                        [ ▶️ PLAY AUDIO_LOG ]
-                                                    </button>
+                                                    <button type="button" class="t-btn warning w-100 audio-play-btn" data-src="<?php echo htmlspecialchars($url); ?>" style="font-size: 11px;">[ ▶️ PLAY AUDIO_LOG ]</button>
                                                 </div>
                                             <?php elseif($is_video): ?>
-                                                <div class="matrix-item">
-                                                    <video class="matrix-video" controls preload="metadata">
-                                                        <source src="<?php echo htmlspecialchars($url); ?>" type="video/mp4">
-                                                    </video>
-                                                </div>
+                                                <div class="matrix-item"><video class="matrix-video" controls preload="metadata"><source src="<?php echo htmlspecialchars($url); ?>" type="video/mp4"></video></div>
                                             <?php else: ?>
-                                                <div class="matrix-item">
-                                                    <img src="<?php echo htmlspecialchars($url); ?>" class="matrix-img" alt="Transmission Media">
-                                                </div>
+                                                <div class="matrix-item"><img src="<?php echo htmlspecialchars($url); ?>" class="matrix-img" alt="Transmission Media"></div>
                                             <?php endif; ?>
                                         <?php endforeach; ?>
                                     </div>
@@ -853,6 +995,7 @@ try {
                                     <div class='d-flex gap-2'>
                                         <button type='button' onclick="toggleRogerThat(this, <?php echo $msg['id']; ?>, '<?php echo htmlspecialchars($target_planet_url); ?>')" class='t-btn t-btn-sm <?php echo $roger_btn_class; ?>' style='padding: 2px 6px; font-size: 10px;'><?php echo $roger_btn_text; ?></button>
                                         <button type='button' onclick="toggleBookmark(this, <?php echo $msg['id']; ?>)" class='t-btn t-btn-sm <?php echo $book_btn_class; ?>' style='padding: 2px 6px; font-size: 10px;'><?php echo $book_btn_text; ?></button>
+                                        <?php echo $relay_button_html; ?>
                                     </div>
                                     <span class='fs-small text-muted' style='font-size: 11px;'>ROGER_COUNT: <strong class='text-success'><?php echo $res_count; ?></strong></span>
                                 </div>
@@ -1061,56 +1204,74 @@ try {
     <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
     <script>
         // ==========================================
-        // ⚡ [ V7.2 ] THE SOCIAL SIGNAL ENGINE
+        // ⚡ [ V7.2 & V7.3 ] THE SOCIAL SIGNAL ENGINE
         // ==========================================
         async function toggleRogerThat(btn, id, target) {
-            if (btn.classList.contains('success')) return; // Already rogered
-            
-            btn.innerText = '[ TRANSMITTING... ]';
-            btn.disabled = true;
-            
-            const fd = new FormData();
-            fd.append('visibility', 'resonance');
-            fd.append('post_id', id);
-            fd.append('target_planet', target);
-            fd.append('content', 'roger');
-            
+            if (btn.classList.contains('success')) return; 
+            btn.innerText = '[ TRANSMITTING... ]'; btn.disabled = true;
+            const fd = new FormData(); fd.append('visibility', 'resonance'); fd.append('post_id', id); fd.append('target_planet', target); fd.append('content', 'roger');
             try {
                 const res = await fetch('core/transmitter.php', { method: 'POST', body: fd });
                 const data = await res.json();
-                
-                if (data.status === 'success') {
-                    btn.innerText = '[ ✓ ACKNOWLEDGED ]';
-                    btn.classList.add('success');
-                } else {
-                    btn.innerText = '[ 📻 ROGER THAT ]';
-                    btn.disabled = false;
-                    Terminal.toast(data.message, 'danger');
-                }
-            } catch(e) {
-                btn.innerText = '[ 📻 ROGER THAT ]';
-                btn.disabled = false;
-            }
+                if (data.status === 'success') { btn.innerText = '[ ✓ ACKNOWLEDGED ]'; btn.classList.add('success'); } 
+                else { btn.innerText = '[ 📻 ROGER THAT ]'; btn.disabled = false; Terminal.toast(data.message, 'danger'); }
+            } catch(e) { btn.innerText = '[ 📻 ROGER THAT ]'; btn.disabled = false; }
         }
 
         async function toggleBookmark(btn, id) {
             btn.disabled = true;
-            const fd = new FormData();
-            fd.append('action', 'toggle_bookmark');
-            fd.append('id', id);
-            
+            const fd = new FormData(); fd.append('action', 'toggle_bookmark'); fd.append('id', id);
             try {
                 const res = await fetch('console.php', { method: 'POST', body: fd });
                 const status = await res.text();
-                
-                if (status.trim() === 'SAVED') {
-                    btn.innerText = '[ 📌 SAVED ]';
-                    btn.classList.add('warning');
-                } else {
-                    btn.innerText = '[ 📌 BOOKMARK ]';
-                    btn.classList.remove('warning');
-                }
+                if (status.trim() === 'SAVED') { btn.innerText = '[ 📌 SAVED ]'; btn.classList.add('warning'); } 
+                else { btn.innerText = '[ 📌 BOOKMARK ]'; btn.classList.remove('warning'); }
             } catch(e) {}
+            btn.disabled = false;
+        }
+
+        // 🔁 [ V7.3 ] TACTICAL RELAY PROTOCOL
+        async function relayPost(btn, msgId, originId) {
+            btn.disabled = true;
+            btn.innerText = '[ RELAYING... ]';
+            const fd = new FormData();
+            fd.append('action', 'relay_post');
+            fd.append('msg_id', msgId);
+            fd.append('origin_id', originId);
+            try {
+                const res = await fetch('console.php', { method: 'POST', body: fd });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    btn.innerText = '[ 🗑️ UNRELAY ]';
+                    btn.classList.replace('warning', 'danger');
+                    btn.setAttribute('onclick', `unrelayPost(this, ${data.relay_id}, ${msgId}, '${originId}')`);
+                    Terminal.toast('[✓] SIGNAL RELAYED ACROSS CONSTELLATION', 'success');
+                } else {
+                    btn.innerText = '[ 🔁 RELAY ]';
+                    Terminal.toast('[!] RELAY FAILED', 'danger');
+                }
+            } catch(e) { btn.innerText = '[ 🔁 RELAY ]'; }
+            btn.disabled = false;
+        }
+
+        async function unrelayPost(btn, relayId, msgId, originId) {
+            btn.disabled = true;
+            btn.innerText = '[ UNRELAYING... ]';
+            const fd = new FormData();
+            fd.append('action', 'unrelay_post');
+            fd.append('id', relayId);
+            try {
+                const res = await fetch('console.php', { method: 'POST', body: fd });
+                const status = await res.text();
+                if (status.trim() === 'UNRELAYED') {
+                    btn.innerText = '[ 🔁 RELAY ]';
+                    btn.classList.replace('danger', 'warning');
+                    btn.setAttribute('onclick', `relayPost(this, ${msgId}, '${originId}')`);
+                    Terminal.toast('[✓] RELAY CANCELED & PURGED', 'warning');
+                } else {
+                    btn.innerText = '[ 🗑️ UNRELAY ]';
+                }
+            } catch(e) { btn.innerText = '[ 🗑️ UNRELAY ]'; }
             btn.disabled = false;
         }
 
@@ -1120,9 +1281,7 @@ try {
         const telCheckbox = document.getElementById('cr-telegram-enabled');
         const telSettings = document.getElementById('telegram-settings');
         if(telCheckbox && telSettings) {
-            telCheckbox.addEventListener('change', function() {
-                telSettings.style.display = this.checked ? 'block' : 'none';
-            });
+            telCheckbox.addEventListener('change', function() { telSettings.style.display = this.checked ? 'block' : 'none'; });
         }
 
         // ==========================================
@@ -1130,17 +1289,11 @@ try {
         // ==========================================
         async function encryptVault(privPem, passcode) {
             const enc = new TextEncoder();
-            const keyMaterial = await window.crypto.subtle.importKey(
-                "raw", enc.encode(passcode), {name: "PBKDF2"}, false, ["deriveKey"]
-            );
+            const keyMaterial = await window.crypto.subtle.importKey("raw", enc.encode(passcode), {name: "PBKDF2"}, false, ["deriveKey"]);
             const salt = window.crypto.getRandomValues(new Uint8Array(16));
-            const key = await window.crypto.subtle.deriveKey(
-                {name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256"},
-                keyMaterial, {name: "AES-GCM", length: 256}, false, ["encrypt"]
-            );
+            const key = await window.crypto.subtle.deriveKey({name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256"}, keyMaterial, {name: "AES-GCM", length: 256}, false, ["encrypt"]);
             const iv = window.crypto.getRandomValues(new Uint8Array(12));
             const cipher = await window.crypto.subtle.encrypt({name: "AES-GCM", iv: iv}, key, new TextEncoder().encode(privPem));
-            
             const saltB64 = window.btoa(String.fromCharCode.apply(null, new Uint8Array(salt)));
             const ivB64 = window.btoa(String.fromCharCode.apply(null, new Uint8Array(iv)));
             const cipherB64 = window.btoa(String.fromCharCode.apply(null, new Uint8Array(cipher)));
@@ -1151,18 +1304,13 @@ try {
             const pc = document.getElementById('vault-setup-passcode').value;
             if (!pc) return;
             document.getElementById('vault-setup-passcode').disabled = true;
-
             const privPem = localStorage.getItem('relay_privkey');
             const pubPem = localStorage.getItem('relay_pubkey');
             if (!privPem) return;
-
             try {
                 const encPriv = await encryptVault(privPem, pc);
                 const formData = new FormData();
-                formData.append('action', 'save_keys');
-                formData.append('public_key', pubPem);
-                formData.append('encrypted_privkey', encPriv);
-
+                formData.append('action', 'save_keys'); formData.append('public_key', pubPem); formData.append('encrypted_privkey', encPriv);
                 await fetch('console.php', { method: 'POST', body: formData });
                 document.getElementById('vault-setup-modal').style.display = 'none';
                 Terminal.toast('[✓] IDENTITY VAULT SECURED', 'success');
@@ -1183,27 +1331,17 @@ try {
         async function forgeQuantumKeys() {
             Terminal.splash.show('> FORGING_QUANTUM_KEYS...');
             try {
-                const keyPair = await window.crypto.subtle.generateKey(
-                    { name: "RSA-OAEP", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
-                    true, ["encrypt", "decrypt"]
-                );
-
+                const keyPair = await window.crypto.subtle.generateKey({ name: "RSA-OAEP", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["encrypt", "decrypt"]);
                 const exportKey = async (key, type) => {
                     const exported = await window.crypto.subtle.exportKey(type, key);
                     return window.btoa(String.fromCharCode.apply(null, new Uint8Array(exported)));
                 };
-
                 const pubPem = await exportKey(keyPair.publicKey, "spki");
                 const privPem = await exportKey(keyPair.privateKey, "pkcs8");
-
-                localStorage.setItem('relay_pubkey', pubPem);
-                localStorage.setItem('relay_privkey', privPem);
-
+                localStorage.setItem('relay_pubkey', pubPem); localStorage.setItem('relay_privkey', privPem);
                 const formData = new FormData();
-                formData.append('action', 'save_keys');
-                formData.append('public_key', pubPem);
+                formData.append('action', 'save_keys'); formData.append('public_key', pubPem);
                 await fetch('console.php', { method: 'POST', body: formData });
-
                 Terminal.splash.hide();
             } catch (err) {
                 Terminal.splash.hide();
@@ -1220,21 +1358,12 @@ try {
             const localPriv = localStorage.getItem('relay_privkey');
             const localPub = localStorage.getItem('relay_pubkey');
             
-            // 1. New Device (No Local Keys)
             if (!localPriv || !localPub) {
-                if (serverEncPriv) {
-                    return;
-                } else if (serverPubKey) {
-                    document.getElementById('split-brain-modal').style.display = 'flex';
-                    return;
-                } else {
-                    await forgeQuantumKeys();
-                    document.getElementById('vault-setup-modal').style.display = 'flex';
-                    return;
-                }
+                if (serverEncPriv) return; 
+                else if (serverPubKey) { document.getElementById('split-brain-modal').style.display = 'flex'; return; } 
+                else { await forgeQuantumKeys(); document.getElementById('vault-setup-modal').style.display = 'flex'; return; }
             }
 
-            // 2. Existing Device (Has Local Keys)
             if (localPriv && localPub) {
                 if (serverPubKey && localPub !== serverPubKey) {
                     if (serverEncPriv) {
@@ -1242,32 +1371,20 @@ try {
                         setTimeout(() => { window.location.href = 'console.php?logout=true'; }, 2000);
                         return;
                     } else {
-                        document.getElementById('split-brain-modal').style.display = 'flex';
-                        return;
+                        document.getElementById('split-brain-modal').style.display = 'flex'; return;
                     }
-                } else if (!serverEncPriv) {
-                    document.getElementById('vault-setup-modal').style.display = 'flex';
-                    return;
-                }
+                } else if (!serverEncPriv) { document.getElementById('vault-setup-modal').style.display = 'flex'; return; }
             }
 
-            // 🗼 THE LIGHTHOUSE HEARTBEAT (Pings directory if Opted-In)
             const lighthouseOpt = "<?php echo $lighthouse_opt; ?>";
             if (lighthouseOpt === '1') {
                 const planetUrlStr = window.location.origin + window.location.pathname.replace('/console.php', '');
                 const stationNameStr = "<?php echo addslashes($station_name); ?>";
                 const stationBioStr = "<?php echo addslashes($station_bio); ?>";
-                
                 fetch('https://relay.emptyhub.my.id/api_register.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        action: 'ping',
-                        planet_url: planetUrlStr,
-                        station_name: stationNameStr,
-                        station_bio: stationBioStr
-                    })
-                }).catch(e => {}); // Silent execution in background
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'ping', planet_url: planetUrlStr, station_name: stationNameStr, station_bio: stationBioStr })
+                }).catch(e => {}); 
             }
         });
 
@@ -1280,15 +1397,12 @@ try {
             const hasMedia = container.querySelector('.media-matrix') || container.querySelector('.audio-play-btn') || container.querySelector('.matrix-img') ? true : false;
             
             let originalText = msgElement.innerText.trim();
-
             let quoteBlock = `> [ TRANSMISI DARI: ${author} ]\n`;
             if (originalText.length > 0) {
                 const lines = originalText.split('\n').map(line => `> ${line}`);
                 quoteBlock += lines.join('\n') + '\n';
             }
-            if (hasMedia) {
-                quoteBlock += `> [ 📎 MEDIA_ATTACHED ]\n`;
-            }
+            if (hasMedia) { quoteBlock += `> [ 📎 MEDIA_ATTACHED ]\n`; }
             
             const input = document.querySelector('#broadcast-form textarea[name="content"]');
             input.value = quoteBlock + '\n' + input.value;
@@ -1298,22 +1412,14 @@ try {
         async function globalPurge(btn, msgId) {
             if (confirm('> THE GLOBAL PURGE PROTOCOL\n\nWARNING: This will permanently delete this broadcast locally AND fire a silent missile to wipe it from all allied Star Chart nodes.\n\nExecute?')) {
                 Terminal.splash.show('> INITIATING GLOBAL_PURGE...');
-                
                 const container = btn.closest('.transmission-card');
                 const rawContent = container.getAttribute('data-raw-content');
-                
                 const fireData = new FormData();
-                fireData.append('visibility', 'global_purge');
-                fireData.append('content', rawContent); 
-                try {
-                    await fetch('core/transmitter.php', { method: 'POST', body: fireData });
-                } catch(e) {}
-
+                fireData.append('visibility', 'global_purge'); fireData.append('content', rawContent); 
+                try { await fetch('core/transmitter.php', { method: 'POST', body: fireData }); } catch(e) {}
                 const delData = new FormData();
-                delData.append('action', 'delete_local');
-                delData.append('id', msgId);
+                delData.append('action', 'delete_local'); delData.append('id', msgId);
                 await fetch('console.php', { method: 'POST', body: delData });
-                
                 Terminal.toast('[✓] GLOBAL PURGE EXECUTED', 'success');
                 setTimeout(() => location.reload(), 1000);
             }
@@ -1329,36 +1435,24 @@ try {
                 const btn = this.querySelector('button[type="submit"]');
                 btn.innerText = '[ UPDATING_CORE_MEMORY... ]';
                 
-                const newName = document.getElementById('cr-name').value;
-                const newBio = document.getElementById('cr-bio').value;
-                const isBunker = document.getElementById('cr-bunker').checked ? '1' : '0';
-                const isLighthouse = document.getElementById('cr-lighthouse').checked ? '1' : '0';
-                const newPass = document.getElementById('cr-passcode').value;
-                
-                // 👁️ [ V7.0 THE ORACLE: INPUT CAPTURE ]
-                const isTelegram = document.getElementById('cr-telegram-enabled').checked ? '1' : '0';
-                const telToken = document.getElementById('cr-telegram-token').value;
-                const telChatId = document.getElementById('cr-telegram-chatid').value;
-                
                 const formData = new FormData();
                 formData.append('action', 'save_control_room');
-                formData.append('station_name', newName);
-                formData.append('station_bio', newBio);
-                formData.append('bunker_mode', isBunker);
-                formData.append('lighthouse_opt', isLighthouse);
-                formData.append('station_passcode', newPass);
+                formData.append('station_name', document.getElementById('cr-name').value);
+                formData.append('station_bio', document.getElementById('cr-bio').value);
+                formData.append('bunker_mode', document.getElementById('cr-bunker').checked ? '1' : '0');
+                formData.append('lighthouse_opt', document.getElementById('cr-lighthouse').checked ? '1' : '0');
                 
-                formData.append('telegram_enabled', isTelegram);
-                formData.append('telegram_bot_token', telToken);
-                formData.append('telegram_chat_id', telChatId);
+                const newPass = document.getElementById('cr-passcode').value;
+                formData.append('station_passcode', newPass);
+                formData.append('telegram_enabled', document.getElementById('cr-telegram-enabled').checked ? '1' : '0');
+                formData.append('telegram_bot_token', document.getElementById('cr-telegram-token').value);
+                formData.append('telegram_chat_id', document.getElementById('cr-telegram-chatid').value);
 
                 if (newPass) {
                     const privPem = localStorage.getItem('relay_privkey');
                     if (privPem) {
-                        try {
-                            const encPriv = await encryptVault(privPem, newPass);
-                            formData.append('encrypted_privkey', encPriv);
-                        } catch(err) { console.error('Failed to re-encrypt vault', err); }
+                        try { const encPriv = await encryptVault(privPem, newPass); formData.append('encrypted_privkey', encPriv); } 
+                        catch(err) { console.error('Failed to re-encrypt vault', err); }
                     }
                 }
                 
@@ -1374,7 +1468,7 @@ try {
         }
 
         // ==========================================
-        // 🎙️ [ TACTICAL SQUELCH GENERATOR (Web Audio API) ]
+        // 🎙️ [ TACTICAL SQUELCH & PTT ENGINE ]
         // ==========================================
         let audioCtx;
         function getAudioCtx() {
@@ -1384,52 +1478,25 @@ try {
         }
 
         function playSquelch(type) {
-            const ctx = getAudioCtx();
-            const duration = 0.15; 
-            
+            const ctx = getAudioCtx(); const duration = 0.15; 
             const bufferSize = ctx.sampleRate * duration; 
             const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
             const data = buffer.getChannelData(0);
             for (let i = 0; i < bufferSize; i++) { data[i] = Math.random() * 2 - 1; }
             
-            const noise = ctx.createBufferSource();
-            noise.buffer = buffer;
+            const noise = ctx.createBufferSource(); noise.buffer = buffer;
+            const noiseFilter = ctx.createBiquadFilter(); noiseFilter.type = 'bandpass'; noiseFilter.frequency.value = 1500;
+            const noiseGain = ctx.createGain(); noiseGain.gain.setValueAtTime(1, ctx.currentTime); noiseGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+            noise.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(ctx.destination);
             
-            const noiseFilter = ctx.createBiquadFilter();
-            noiseFilter.type = 'bandpass';
-            noiseFilter.frequency.value = 1500;
+            const osc = ctx.createOscillator(); osc.type = 'square'; osc.frequency.setValueAtTime(type === 'start' ? 2200 : 1200, ctx.currentTime);
+            const oscGain = ctx.createGain(); oscGain.gain.setValueAtTime(0.1, ctx.currentTime); oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+            osc.connect(oscGain); oscGain.connect(ctx.destination);
             
-            const noiseGain = ctx.createGain();
-            noiseGain.gain.setValueAtTime(1, ctx.currentTime);
-            noiseGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
-            
-            noise.connect(noiseFilter);
-            noiseFilter.connect(noiseGain);
-            noiseGain.connect(ctx.destination);
-            
-            const osc = ctx.createOscillator();
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(type === 'start' ? 2200 : 1200, ctx.currentTime);
-            
-            const oscGain = ctx.createGain();
-            oscGain.gain.setValueAtTime(0.1, ctx.currentTime);
-            oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
-            
-            osc.connect(oscGain);
-            oscGain.connect(ctx.destination);
-            
-            noise.start();
-            osc.start();
-            osc.stop(ctx.currentTime + duration);
+            noise.start(); osc.start(); osc.stop(ctx.currentTime + duration);
         }
 
-        // ==========================================
-        // 🎙️ [ THE PUSH-TO-TALK ENGINE (MediaRecorder) ]
-        // ==========================================
-        let mediaRecorder;
-        let audioChunks = [];
-        let isRecording = false;
-        
+        let mediaRecorder; let audioChunks = []; let isRecording = false;
         const pttBtn = document.getElementById('ptt-btn');
         const fileDisplay = document.getElementById('file-name-display');
         const audioBase64Input = document.getElementById('audio-base64');
@@ -1441,15 +1508,11 @@ try {
             if (isRecording) return;
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
-                audioChunks = [];
-                
+                mediaRecorder = new MediaRecorder(stream); audioChunks = [];
                 mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
-                
                 mediaRecorder.onstop = () => {
                     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                    const reader = new FileReader();
-                    reader.readAsDataURL(audioBlob);
+                    const reader = new FileReader(); reader.readAsDataURL(audioBlob);
                     reader.onloadend = () => {
                         audioBase64Input.value = reader.result;
                         fileDisplay.innerText = '> [ AUDIO_LOG_SAVED ]';
@@ -1457,38 +1520,24 @@ try {
                     };
                     stream.getTracks().forEach(track => track.stop()); 
                 };
-                
-                mediaRecorder.start();
-                isRecording = true;
-                playSquelch('start');
-                
-                pttBtn.classList.add('warning', 't-blink');
-                pttBtn.classList.remove('danger');
+                mediaRecorder.start(); isRecording = true; playSquelch('start');
+                pttBtn.classList.add('warning', 't-blink'); pttBtn.classList.remove('danger');
                 pttBtn.innerText = '[ 🔴 RECORDING... ]';
-                fileDisplay.innerText = '> LISTENING...';
-                fileDisplay.className = 'fs-small text-danger t-blink';
-            } catch (err) {
-                console.error(err);
-                Terminal.toast('[!] MIC ACCESS DENIED. CHECK BROWSER PERMISSIONS.', 'danger');
-            }
+                fileDisplay.innerText = '> LISTENING...'; fileDisplay.className = 'fs-small text-danger t-blink';
+            } catch (err) { Terminal.toast('[!] MIC ACCESS DENIED.', 'danger'); }
         }
 
         function stopRecording() {
             if (!isRecording || !mediaRecorder) return;
-            mediaRecorder.stop();
-            isRecording = false;
-            playSquelch('stop');
-            
-            pttBtn.classList.remove('warning', 't-blink');
-            pttBtn.classList.add('danger');
+            mediaRecorder.stop(); isRecording = false; playSquelch('stop');
+            pttBtn.classList.remove('warning', 't-blink'); pttBtn.classList.add('danger');
             pttBtn.innerText = '[ 🎙️ HOLD_TO_TALK ]';
         }
 
         if (pttBtn) {
             pttBtn.addEventListener('mousedown', startRecording);
             pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); }, {passive: false});
-            window.addEventListener('mouseup', stopRecording);
-            pttBtn.addEventListener('touchend', stopRecording);
+            window.addEventListener('mouseup', stopRecording); pttBtn.addEventListener('touchend', stopRecording);
         }
 
         // ==========================================
@@ -1497,44 +1546,26 @@ try {
         if (mediaInput) {
             mediaInput.addEventListener('change', async function(e) {
                 const files = e.target.files;
-                if(files.length === 0) {
-                    fileDisplay.innerText = '> NO_MEDIA';
-                    compStatus.innerText = '';
-                    mediaBase64Input.value = '';
-                    return;
-                }
-                
-                if(files.length > 4) {
-                    Terminal.toast('[!] MAX 4 FILES ALLOWED', 'warning');
-                }
+                if(files.length === 0) { fileDisplay.innerText = '> NO_MEDIA'; compStatus.innerText = ''; mediaBase64Input.value = ''; return; }
+                if(files.length > 4) { Terminal.toast('[!] MAX 4 FILES ALLOWED', 'warning'); }
                 
                 const processCount = Math.min(files.length, 4);
-                if (processCount === 1) {
-                    fileDisplay.innerText = '> ' + files[0].name;
-                } else {
-                    fileDisplay.innerText = '> [ ' + processCount + ' MEDIA ATTACHED ]';
-                }
-                fileDisplay.className = 'fs-small text-success font-bold';
-                compStatus.innerText = '[ PROCESSING... ]';
+                fileDisplay.innerText = (processCount === 1) ? '> ' + files[0].name : '> [ ' + processCount + ' MEDIA ATTACHED ]';
+                fileDisplay.className = 'fs-small text-success font-bold'; compStatus.innerText = '[ PROCESSING... ]';
                 
                 let processedBase64Array = [];
-                
                 for(let i=0; i < processCount; i++) {
                     const file = files[i];
                     if(file.type.startsWith('video/') || file.type.startsWith('audio/')) { continue; }
                     if(file.type.startsWith('image/')) {
-                        const b64 = await compressImage(file);
-                        processedBase64Array.push(b64);
+                        const b64 = await compressImage(file); processedBase64Array.push(b64);
                     }
                 }
                 
                 if (processedBase64Array.length > 0) {
                     mediaBase64Input.value = JSON.stringify(processedBase64Array);
                     compStatus.innerText = '[ WEBP COMPRESSED ]';
-                } else {
-                    mediaBase64Input.value = '';
-                    compStatus.innerText = '[ RAW MEDIA QUEUED ]';
-                }
+                } else { mediaBase64Input.value = ''; compStatus.innerText = '[ RAW MEDIA QUEUED ]'; }
             });
         }
 
@@ -1548,8 +1579,7 @@ try {
                         let width = img.width; let height = img.height;
                         if(width > 1080) { height = Math.round(height * 1080 / width); width = 1080; } 
                         canvas.width = width; canvas.height = height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, width, height);
+                        const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height);
                         resolve(canvas.toDataURL('image/webp', 0.8));
                     }
                     img.src = event.target.result;
@@ -1561,47 +1591,18 @@ try {
         // ==========================================
         // ▶️ [ DELEGATED RETRO AUDIO PLAYER ]
         // ==========================================
-        let currentAudio = null;
-        let currentBtn = null;
-
+        let currentAudio = null; let currentBtn = null;
         document.addEventListener('click', function(e) {
             if (e.target && e.target.classList.contains('audio-play-btn')) {
-                const btn = e.target;
-                const src = btn.getAttribute('data-src');
-                
+                const btn = e.target; const src = btn.getAttribute('data-src');
                 if (currentAudio && currentBtn === btn) {
-                    if (!currentAudio.paused) {
-                        currentAudio.pause();
-                        btn.innerText = '[ ▶️ PLAY AUDIO_LOG ]';
-                        btn.classList.remove('t-blink');
-                        return;
-                    } else {
-                        currentAudio.play();
-                        btn.innerText = '[ ⏸️ PLAYING... ]';
-                        btn.classList.add('t-blink');
-                        return;
-                    }
+                    if (!currentAudio.paused) { currentAudio.pause(); btn.innerText = '[ ▶️ PLAY AUDIO_LOG ]'; btn.classList.remove('t-blink'); return; } 
+                    else { currentAudio.play(); btn.innerText = '[ ⏸️ PLAYING... ]'; btn.classList.add('t-blink'); return; }
                 }
-                
-                if (currentAudio) {
-                    currentAudio.pause();
-                    if(currentBtn) {
-                        currentBtn.innerText = '[ ▶️ PLAY AUDIO_LOG ]';
-                        currentBtn.classList.remove('t-blink');
-                    }
-                }
-                
-                currentAudio = new Audio(src);
-                currentBtn = btn;
-                currentBtn.innerText = '[ ⏸️ PLAYING... ]';
-                currentBtn.classList.add('t-blink');
-                
+                if (currentAudio) { currentAudio.pause(); if(currentBtn) { currentBtn.innerText = '[ ▶️ PLAY AUDIO_LOG ]'; currentBtn.classList.remove('t-blink'); } }
+                currentAudio = new Audio(src); currentBtn = btn; currentBtn.innerText = '[ ⏸️ PLAYING... ]'; currentBtn.classList.add('t-blink');
                 currentAudio.play();
-                
-                currentAudio.onended = () => {
-                    currentBtn.innerText = '[ ▶️ PLAY AUDIO_LOG ]';
-                    currentBtn.classList.remove('t-blink');
-                };
+                currentAudio.onended = () => { currentBtn.innerText = '[ ▶️ PLAY AUDIO_LOG ]'; currentBtn.classList.remove('t-blink'); };
             }
         });
 
@@ -1617,68 +1618,42 @@ try {
         }
         
         const sonarInput = document.getElementById('cr-sonar-code');
-        if(sonarInput) {
-            sonarInput.addEventListener('input', function() {
-                this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-            });
-        }
+        if(sonarInput) { sonarInput.addEventListener('input', function() { this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); }); }
 
         const MORSE_DICT = {
-            'A': '.-', 'B': '-...', 'C': '-.-.', 'D': '-..', 'E': '.', 'F': '..-.',
-            'G': '--.', 'H': '....', 'I': '..', 'J': '.---', 'K': '-.-', 'L': '.-..',
-            'M': '--', 'N': '-.', 'O': '---', 'P': '.--.', 'Q': '--.-', 'R': '.-.',
-            'S': '...', 'T': '-', 'U': '..-', 'V': '...-', 'W': '.--', 'X': '-..-',
-            'Y': '-.--', 'Z': '--..', '0': '-----', '1': '.----', '2': '..---',
-            '3': '...--', '4': '....-', '5': '.....', '6': '-....', '7': '--...',
+            'A': '.-', 'B': '-...', 'C': '-.-.', 'D': '-..', 'E': '.', 'F': '..-.', 'G': '--.', 'H': '....', 'I': '..', 'J': '.---', 'K': '-.-', 'L': '.-..',
+            'M': '--', 'N': '-.', 'O': '---', 'P': '.--.', 'Q': '--.-', 'R': '.-.', 'S': '...', 'T': '-', 'U': '..-', 'V': '...-', 'W': '.--', 'X': '-..-',
+            'Y': '-.--', 'Z': '--..', '0': '-----', '1': '.----', '2': '..---', '3': '...--', '4': '....-', '5': '.....', '6': '-....', '7': '--...',
             '8': '---..', '9': '----.'
         };
 
         async function decodeSonar(code, alertId) {
             code = code.toUpperCase().replace(/[^A-Z0-9]/g, '');
-            const btn = document.getElementById('btn-sonar-' + alertId);
-            const display = document.getElementById('sonar-display-' + alertId);
-            
-            btn.disabled = true;
-            btn.innerText = '[ 📻 DECODING... ]';
-            display.innerText = '';
+            const btn = document.getElementById('btn-sonar-' + alertId); const display = document.getElementById('sonar-display-' + alertId);
+            btn.disabled = true; btn.innerText = '[ 📻 DECODING... ]'; display.innerText = '';
 
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-
-            oscillator.type = 'sine';
-            oscillator.frequency.value = 600; 
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-            
-            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-            oscillator.start();
+            const oscillator = audioCtx.createOscillator(); const gainNode = audioCtx.createGain();
+            oscillator.type = 'sine'; oscillator.frequency.value = 600; 
+            oscillator.connect(gainNode); gainNode.connect(audioCtx.destination);
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime); oscillator.start();
 
             const dotTime = 0.1; 
-
             for (let i = 0; i < code.length; i++) {
-                let char = code[i];
-                display.innerText += char; 
-                
+                let char = code[i]; display.innerText += char; 
                 let morse = MORSE_DICT[char];
                 if (morse) {
                     for (let j = 0; j < morse.length; j++) {
-                        let symbol = morse[j];
-                        let duration = symbol === '.' ? dotTime : dotTime * 3;
-                        
+                        let symbol = morse[j]; let duration = symbol === '.' ? dotTime : dotTime * 3;
                         gainNode.gain.setTargetAtTime(1, audioCtx.currentTime, 0.01);
                         await new Promise(r => setTimeout(r, duration * 1000));
-                        
                         gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.01);
                         await new Promise(r => setTimeout(r, dotTime * 1000)); 
                     }
                 }
                 await new Promise(r => setTimeout(r, dotTime * 3 * 1000)); 
             }
-            
-            oscillator.stop();
-            btn.innerText = '[ ✓ DECODED ]';
+            oscillator.stop(); btn.innerText = '[ ✓ DECODED ]';
             
             fetch('core/alert_action.php?id=' + alertId + '&ajax=1').then(() => {
                 setTimeout(() => {
@@ -1690,15 +1665,9 @@ try {
                         if (sideCounter) {
                             let count = parseInt(sideCounter.innerText) - 1;
                             if (count <= 0) {
-                                const sideHeader = document.getElementById('sidebar-alert-header');
-                                const sideList = document.getElementById('sidebar-alert-list');
-                                if(sideHeader) sideHeader.remove();
-                                if(sideList) sideList.remove();
-                                if(navCounter) navCounter.remove();
-                            } else {
-                                sideCounter.innerText = count;
-                                if(navCounter) navCounter.innerHTML = `[ 🔔 ${count} NEW ]`;
-                            }
+                                const sideHeader = document.getElementById('sidebar-alert-header'); const sideList = document.getElementById('sidebar-alert-list');
+                                if(sideHeader) sideHeader.remove(); if(sideList) sideList.remove(); if(navCounter) navCounter.remove();
+                            } else { sideCounter.innerText = count; if(navCounter) navCounter.innerHTML = `[ 🔔 ${count} NEW ]`; }
                         }
                     }
                 }, 2000);
@@ -1715,14 +1684,8 @@ try {
                 const audioInput = document.getElementById('audio-base64');
                 const mediaInp = document.getElementById('media-input');
                 
-                if (contentInput.value.trim() === '' && (audioInput.value !== '' || mediaInp.files.length > 0)) {
-                    contentInput.value = '[ 🎙️ SECURE_MEDIA_TRANSMISSION ]';
-                } else if (contentInput.value.trim() === '') {
-                    e.preventDefault();
-                    Terminal.toast('[!] TRANSMISSION CANNOT BE EMPTY', 'danger');
-                    return;
-                }
-                
+                if (contentInput.value.trim() === '' && (audioInput.value !== '' || mediaInp.files.length > 0)) { contentInput.value = '[ 🎙️ SECURE_MEDIA_TRANSMISSION ]'; } 
+                else if (contentInput.value.trim() === '') { e.preventDefault(); Terminal.toast('[!] TRANSMISSION CANNOT BE EMPTY', 'danger'); return; }
                 Terminal.splash.show('> TRANSMITTING_SIGNAL...'); 
             });
         }
@@ -1732,9 +1695,7 @@ try {
         function acceptHandshake(url, alertId) {
             document.getElementById('target-planet-input').value = url;
             Terminal.splash.show('> PROCESSING_MUTUAL_LINK...');
-            fetch('core/alert_action.php?id=' + alertId + '&ajax=1').then(() => {
-                document.getElementById('follow-form').submit();
-            });
+            fetch('core/alert_action.php?id=' + alertId + '&ajax=1').then(() => { document.getElementById('follow-form').submit(); });
         }
 
         let deferredPrompt; const installBtn = document.getElementById('installAppBtn');
@@ -1751,7 +1712,6 @@ try {
                 if(entries[0].isIntersecting && !isFetching) {
                     isFetching = true;
                     loadMoreEl.innerText = '[ RECEIVING SIGNALS... ]';
-                    
                     const cards = document.querySelectorAll('.transmission-card');
                     if (cards.length === 0) return;
                     const lastId = cards[cards.length - 1].getAttribute('data-id');

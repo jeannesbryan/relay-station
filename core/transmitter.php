@@ -1,10 +1,10 @@
 <?php
 require_once 'ssl_shield.php';
 // ==========================================================
-// 🚀 RELAY STATION: TRANSMITTER ENGINE (V7.2)
+// 🚀 RELAY STATION: TRANSMITTER ENGINE (V7.3)
 // Handles Public, Direct, Ghost Protocol, Media, Sonar Pulse, ACKs, 
-// Scorched Earth, Global Purge, and the new SIGNAL RESONANCE.
-// Equipped with Symmetric Handshake Token, WAF Bypass, & Spam Ping Mitigation.
+// Scorched Earth, Global Purge, SIGNAL RESONANCE, and THE RELAY PROTOCOL.
+// Equipped with Anti-Loop Shield, Chain Purge support, and WAF Bypass.
 // ==========================================================
 
 date_default_timezone_set('UTC'); // Enforce UTC to prevent Ghost Protocol timing issues
@@ -17,8 +17,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $visibility = strip_tags(trim($_POST['visibility'] ?? 'public'));
     $target_planet = filter_var(trim($_POST['target_planet'] ?? ''), FILTER_SANITIZE_URL);
     
-    // [ V7.2 ] Capture Post ID for Resonance Protocol
+    // [ V7.2 & V7.3 ] Special tactical parameters
     $post_id = (int)($_POST['post_id'] ?? 0); 
+    $origin_id = strip_tags(trim($_POST['origin_id'] ?? '')); // [ V7.3 ] DNA Sinyal
     
     // 2. Detect Ghost Protocol (Self-destruct timer)
     $is_ghost = isset($_POST['ghost_protocol']) ? true : false;
@@ -156,19 +157,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         // 4. WRITE TO LOCAL CORE MEMORY 
         if (!in_array($visibility, $tactical_signals)) {
-            $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, target_planet, is_remote, author_alias, expiry_date, media_url) VALUES (:content, :visibility, :target, 0, :author, :expiry, :media)");
+            // [ V7.3 ] Inject is_relay and origin_id into local database
+            $stmt = $db->prepare("INSERT INTO transmissions (content, visibility, target_planet, is_remote, author_alias, expiry_date, media_url, is_relay, origin_id) VALUES (:content, :visibility, :target, 0, :author, :expiry, :media, 0, :origin_id)");
             $stmt->execute([
                 ':content' => $content_local, 
                 ':visibility' => $visibility,
                 ':target' => $target_planet,
                 ':author' => $author_alias,
                 ':expiry' => $expiry_date,
-                ':media' => $final_media_url
+                ':media' => $final_media_url,
+                ':origin_id' => !empty($origin_id) ? $origin_id : null
             ]);
         }
 
         // ==========================================
-        // ⚡ [ V7.2 ] SIGNAL RESONANCE (ROGER THAT) - LOCAL SAVE & ANTI-SPAM
+        // ⚡ [ V7.2 ] SIGNAL RESONANCE (ROGER THAT)
         // ==========================================
         if ($visibility === 'resonance') {
             if ($post_id <= 0) {
@@ -177,26 +180,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
 
-            // 🛑 LAPIS 1: MITIGASI SPAM PING
-            // Jika kita sudah pernah me-Resonansi postingan ini, batalkan peluncuran peluru cURL.
+            // Anti-Spam Check
             $stmt_check = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = :pid AND reactor_url = :my_url");
             $stmt_check->execute([':pid' => $post_id, ':my_url' => $my_planet_url]);
             if ($stmt_check->fetchColumn() > 0) {
                 header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => '[ ANTI-SPAM ] Signal already acknowledged. Transmission aborted.']);
+                echo json_encode(['status' => 'error', 'message' => '[ ANTI-SPAM ] Signal already acknowledged.']);
                 exit;
             }
 
-            // Simpan ke memori lokal agar UI kita (console.php) tahu tombol sudah ditekan
             $stmt_res = $db->prepare("INSERT INTO signal_resonance (post_id, reactor_url, reactor_alias, resonance_type) VALUES (:pid, :my_url, :alias, :type)");
             $stmt_res->execute([
                 ':pid' => $post_id,
                 ':my_url' => $my_planet_url,
                 ':alias' => $author_alias,
-                ':type' => $content // Menyimpan tipe (misal: 'roger')
+                ':type' => $content 
             ]);
         }
         
+        // ==========================================
+        // 💥 [ V7.3 ] CHAIN-PURGE (FETCH ORIGIN DNA)
+        // ==========================================
+        if ($visibility === 'global_purge') {
+            // Lacak DNA (origin_id) dari pesan yang dihapus Kapten agar rudalnya akurat
+            $stmt_orig = $db->prepare("SELECT origin_id FROM transmissions WHERE content = :content AND is_remote = 0 LIMIT 1");
+            $stmt_orig->execute([':content' => $content_local]);
+            $fetched_origin = $stmt_orig->fetchColumn();
+            if ($fetched_origin) {
+                $origin_id = $fetched_origin;
+            }
+        }
+
         // 5. ASSEMBLE BASE JSON CAPSULE
         if ($visibility === 'resonance') {
             $base_payload = [
@@ -213,7 +227,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 "from_planet" => $my_planet_url,
                 "visibility" => $visibility,
                 "expiry_date" => $expiry_date,
-                "media_url" => $final_media_url
+                "media_url" => $final_media_url,
+                "is_relay" => 0,          // [ V7.3 ] Original broadcast is never a relay from the sender's perspective
+                "origin_id" => $origin_id // [ V7.3 ] Embed DNA into the transmission payload
             ];
         }
 
@@ -242,7 +258,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     curl_setopt($curl_array[$i], CURLOPT_HTTPHEADER, [
                         'Content-Type: application/json',
                         'Content-Length: ' . strlen($json_payload),
-                        'User-Agent: RelayStation-Transmitter/7.2' // [ V7.2 ] WAF Bypass
+                        'User-Agent: RelayStation-Transmitter/7.3' // [ V7.3 ] WAF Bypass Upgrade
                     ]);
                     curl_setopt($curl_array[$i], CURLOPT_TIMEOUT, 5); 
                     curl_multi_add_handle($mh, $curl_array[$i]);
@@ -280,7 +296,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 curl_setopt($ch, CURLOPT_HTTPHEADER, [
                     'Content-Type: application/json',
                     'Content-Length: ' . strlen($json_payload),
-                    'User-Agent: RelayStation-Transmitter/7.2' // [ V7.2 ] WAF Bypass
+                    'User-Agent: RelayStation-Transmitter/7.3' // [ V7.3 ] WAF Bypass Upgrade
                 ]);
                 curl_setopt($ch, CURLOPT_TIMEOUT, 5); 
                 curl_exec($ch);

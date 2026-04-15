@@ -18,12 +18,15 @@ Relay Station is designed to be extremely lightweight and can be hosted on a $1/
 
 ---
 
-## 🚀 Core Capabilities & Features (v7.2 - The Social Signal Update)
+## 🚀 Core Capabilities & Features (v7.3 - The Relay Protocol)
 
 * **100% Data Sovereignty:** You own the server, the database, and the media. There is no central database.
-* **⚡ Signal Resonance (NEW):** A decentralized `[ 📻 ROGER THAT ]` interaction protocol. Acknowledge and appreciate allied transmissions instantly across the P2P network, equipped with built-in Anti-Spam Ping mitigation to protect your database.
-* **📌 The Memory Vault (NEW):** A dedicated Bookmark system to pin important transmissions locally. Powered by an INNER JOIN architecture, bookmarks automatically vanish if the origin node executes a Global Purge or Ghost Protocol self-destruct.
-* **🤝 Symmetric Key Exchange (NEW):** Flawless mutual follow handshake protocol ensuring perfect cryptographic alignment between nodes, completely eliminating the 401 Spoofing Paradox errors during P2P connections.
+* **🔁 The Relay Protocol (NEW):** Seamlessly re-broadcast and curate transmissions from allied nodes across your Constellation. Propagate valuable intel through a decentralized Trust Chain without algorithms. You maintain full control to manually `[ UNRELAY ]` and clean your local database at any time.
+* **🛡️ The Anti-Loop Shield (NEW):** A built-in defense mechanism for the Relay Protocol. Every transmission is embedded with a unique `origin_id` DNA. If a relayed signal loops back to a node that already possesses it, the shield silently drops it, completely preventing spam reverberations and Echo Chambers.
+* **💥 Cascading Chain-Purge (NEW):** An upgrade to the Global Purge protocol. When a commander deletes an original transmission or fires a Global Purge, the destruction signal dynamically cascades through all relayed nodes, automatically wiping mirrored data across the entire network.
+* **⚡ Signal Resonance:** A decentralized `[ 📻 ROGER THAT ]` interaction protocol. Acknowledge and appreciate allied transmissions instantly across the P2P network, equipped with built-in Anti-Spam Ping mitigation to protect your database.
+* **📌 The Memory Vault:** A dedicated Bookmark system to pin important transmissions locally. Powered by an INNER JOIN architecture, bookmarks automatically vanish if the origin node executes a Global Purge or Ghost Protocol self-destruct.
+* **🤝 Symmetric Key Exchange:** Flawless mutual follow handshake protocol ensuring perfect cryptographic alignment between nodes, completely eliminating the 401 Spoofing Paradox errors during P2P connections.
 * **The Oracle (Real-Time Alerts):** Securely integrate a private Telegram Bot to act as your station's Early Warning System. Receive instant tactical notifications for incoming Laser Links, Sonar Pulses, follower handshakes, and security alerts even when your browser is closed.
 * **Constellation Star Chart (P2P Following):** Connect to other Relay nodes simply by adding their URL. The system automatically validates the target node and prevents echo chambers via built-in Anti-Self Loop protocols.
 * **The Nomadic Protocol (Token Re-Sync):** Absolute domain independence. If your server dies, move your SQLite database to a new domain. Your station will automatically fire a cryptographic Re-Sync pulse to update your URL across all allied nodes instantly.
@@ -34,7 +37,7 @@ Relay Station is designed to be extremely lightweight and can be hosted on a $1/
 * **Public Hologram & E2E Laser Links:** Broadcast messages to the public timeline, or send target-specific Direct Messages (Laser Links) secured by native RSA-OAEP 2048-bit End-to-End Encryption.
 * **The Encrypted Key Vault (Multi-Device):** Seamlessly login across multiple devices. Your E2E Private Key is secured on the server using AES-GCM encryption, unlocked only by your Master Passcode in the browser.
 * **Advanced Media Matrix:** Upload up to 4 mixed media files (Images, Video, Audio) seamlessly rendered in a dynamic CSS Grid Gallery with immersive cyberpunk Hologram FX.
-* **The Scorched Earth & Global Purge Protocols:** Send a silent missile to permanently wipe Direct Message history on both local and target remote nodes simultaneously. Erase public broadcasts across the entire allied Constellation.
+* **The Scorched Earth Protocols:** Send a silent missile to permanently wipe Direct Message history on both local and target remote nodes simultaneously. 
 * **PTT Audio Logs (Walkie-Talkie):** Hold to record and broadcast short voice transmissions natively from your browser. Includes E2E encryption support, a tactical Web Audio API squelch generator, and a retro playback interface.
 * **Tactical Quote:** Securely quote incoming text messages in both Public and Direct channels without breaking media references.
 * **Tactical Sonar Pulse:** A highly lightweight, low-bandwidth pinging system. Send short encrypted alphanumeric codes to allied nodes. The receiving station decodes the signal in real-time using a native Web Audio API Morse Code synthesizer.
@@ -71,7 +74,7 @@ Relay Station is built on a pure **Peer-to-Peer (P2P) Distributed Architecture**
 ### The Limitations (Cons)
 1.  **Optional Discovery:** Because there is no central tracker by default, there is no global "explore" page. However, you can explicitly opt-in to *The Lighthouse Protocol* to list your node in a public directory, or remain entirely hidden in Bunker Mode and share your URL manually.
 2.  **Eventual Consistency:** This is not a real-time WebSocket chat app. Signals are fired via asynchronous HTTP requests (cURL). It may take a few seconds for a message to propagate across a large constellation.
-3.  **Storage Responsibility:** While the Garbage Collector helps delete old public messages and Ghost Protocol media, permanent media storage relies entirely on your own server's capacity.
+3.  **Storage Responsibility:** While the Garbage Collector helps delete old public messages and Ghost Protocol media, permanent media storage relies entirely on your own server's capacity. The new Relay feature also stores copies locally, though you maintain the ability to manually purge them.
 4.  **Trust-Based Network:** If a node you follow starts broadcasting spam, your only defense is to manually trigger the **Disconnect Protocol** (Unfollow). 
 
 ---
@@ -93,6 +96,7 @@ When a new version is available, you do not need to download anything manually. 
 
 ## 🛡️ Security Systems
 
+* **The Anti-Loop Shield (NEW):** Blocks infinite relay loops and echo chambers by enforcing strict `origin_id` tracking across the entire network.
 * **Advanced HTML Sanitization:** Extreme data purging mechanisms (strip_tags, filter_var) neutralize XSS payloads and malicious scripts from foreign nodes before they can breach the core memory.
 * **The Oracle Sentinel:** Real-time Telegram alerts for successful Commander logins and anti-brute force lockouts, providing an immediate layer of defensive awareness.
 * **Symmetric Key Exchange Enforcer:** Perfect cryptographic alignment during the mutual follow sequence. Stations exchange and enforce symmetrical tokens upon connection to completely eliminate 401 Spoofing Paradox errors across the Constellation.

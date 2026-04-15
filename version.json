@@ -1,7 +1,7 @@
 {
-    "version": "7.2",
-    "codename": "The Social Signal Update",
+    "version": "7.3",
+    "codename": "The Relay Protocol",
     "status": "stable",
-    "changelog": "THE SOCIAL SIGNAL UPDATE (v7.2):\n- [SOCIAL] Signal Resonance: Introduced the '[ 📻 ROGER THAT ]' tactical resonance button for decentralized P2P interactions without heavy replies, complete with Anti-Spam Ping mitigation.\n- [SYSTEM] The Memory Vault: Added a dedicated Bookmarks vault (bookmarks.php) powered by INNER JOIN architecture, automatically purging saved posts if the origin node executes a Global Purge or Ghost Protocol.\n- [SECURITY] Symmetric Key Exchange: Annihilated the 401 Spoofing Paradox bug by enforcing a bi-directional Handshake Token sync during the follow sequence, ensuring perfect cryptographic alignment.",
-    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v7.2/Relay-OTA-Update-v7.2.zip"
+    "changelog": "THE RELAY PROTOCOL (v7.3):\n- [SOCIAL] The Relay Protocol: Introduced the '[ 🔁 RELAY ]' button allowing commanders to seamlessly re-broadcast and curate transmissions across the Constellation.\n- [SECURITY] The Anti-Loop Shield: Implemented strict 'origin_id' DNA tracking to instantly detect and eliminate signal reverberations (Echo Chambers) and network loops.\n- [SYSTEM] Cascading Chain-Purge: Upgraded the Scorched Earth and Global Purge protocols to dynamically cascade through relayed nodes, automatically destroying mirrored data across the entire Trust Chain.",
+    "download_url": "https://github.com/jeannesbryan/relay-station/releases/download/v7.3/Relay-OTA-Update-v7.3.zip"
 }

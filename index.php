@@ -3,7 +3,7 @@ require_once 'core/ssl_shield.php';
 // ==========================================
 // 📡 RELAY STATION: PUBLIC HOLOGRAM (SOVEREIGN PROFILE)
 // The station's interface for public visitors. 
-// Now strictly displays only local transmissions.
+// V7.3 - Now displays Local Transmissions AND Relayed Posts.
 // ==========================================
 
 // ⚙️ [ AUTO-DETECT SYSTEM COORDINATES ]
@@ -41,13 +41,22 @@ try {
 
         $last_id = (int)$_GET['last_id'];
         
-        // [ SOVEREIGN LOCK ]: Only fetch is_remote = 0 (Local Transmissions)
-        $stmt = $db->prepare("SELECT * FROM transmissions WHERE visibility = 'public' AND is_remote = 0 AND id < :last_id ORDER BY id DESC LIMIT 15");
+        // 🔁 [ V7.3 SOVEREIGN LOCK ]: Fetch is_remote = 0 OR is_relay = 1
+        $stmt = $db->prepare("SELECT * FROM transmissions WHERE visibility = 'public' AND (is_remote = 0 OR is_relay = 1) AND id < :last_id ORDER BY id DESC LIMIT 15");
         $stmt->execute([':last_id' => $last_id]);
         $transmissions = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($transmissions as $msg) {
             $author = htmlspecialchars($msg['author_alias'] ?? 'LOCAL_COMMAND');
+            
+            $is_relay_flag = isset($msg['is_relay']) ? (int)$msg['is_relay'] : 0;
+            $is_me = ($msg['is_remote'] == 0 && $is_relay_flag == 0);
+            $is_my_relay = ($msg['is_remote'] == 0 && $is_relay_flag == 1);
+            
+            $src_label = '';
+            if ($is_me) { $src_label = 'LOCAL_TRANSMISSION:'; }
+            elseif ($is_my_relay) { $src_label = '<span class="text-warning">[ 🔁 RELAYED_BY_ME ]</span> FROM:'; }
+
             $img = '';
             
             // ⚡ [ V7.2 ] Hitung jumlah Roger That untuk AJAX Loader
@@ -87,7 +96,7 @@ try {
             
             echo "<div class='t-card mb-3 p-3 transmission-card' data-id='{$msg['id']}'>
                     <div class='t-bubble-meta t-border-bottom pb-2 mb-2'>
-                        <span>[ {$msg['timestamp']} UTC ] LOCAL_TRANSMISSION: <strong class='text-success'>$author</strong></span>
+                        <span>[ {$msg['timestamp']} UTC ] $src_label <strong class='text-success'>$author</strong></span>
                     </div>
                     <p class='m-0' style='font-size: 14px;'>".nl2br(htmlspecialchars($msg['content']))."</p> $img
                     <div class='mt-3 pt-2 text-right' style='border-top: 1px dashed rgba(0,255,65,0.2);'>
@@ -101,8 +110,8 @@ try {
     // If Bunker Mode is active, do not fetch message data into memory
     $transmissions = [];
     if ($bunker_mode == '0') {
-        // [ SOVEREIGN LOCK ]: Only fetch is_remote = 0
-        $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'public' AND is_remote = 0 ORDER BY id DESC LIMIT 15");
+        // 🔁 [ V7.3 SOVEREIGN LOCK ]: Fetch is_remote = 0 OR is_relay = 1
+        $query = $db->query("SELECT * FROM transmissions WHERE visibility = 'public' AND (is_remote = 0 OR is_relay = 1) ORDER BY id DESC LIMIT 15");
         $transmissions = $query->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -176,6 +185,16 @@ try {
                         <?php else: ?>
                             <?php foreach ($transmissions as $msg): ?>
                                 <?php
+                                    $author = htmlspecialchars($msg['author_alias'] ?? 'LOCAL_COMMAND');
+                                    
+                                    $is_relay_flag = isset($msg['is_relay']) ? (int)$msg['is_relay'] : 0;
+                                    $is_me = ($msg['is_remote'] == 0 && $is_relay_flag == 0);
+                                    $is_my_relay = ($msg['is_remote'] == 0 && $is_relay_flag == 1);
+                                    
+                                    $src_label = '';
+                                    if ($is_me) { $src_label = 'LOCAL_TRANSMISSION:'; }
+                                    elseif ($is_my_relay) { $src_label = '<span class="text-warning">[ 🔁 RELAYED_BY_ME ]</span> FROM:'; }
+
                                     // ⚡ [ V7.2 ] Hitung jumlah Roger That untuk Load Awal
                                     $stmt_res_count = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ?");
                                     $stmt_res_count->execute([$msg['id']]);
@@ -184,8 +203,8 @@ try {
                                 <div class="t-card mb-3 p-3 transmission-card" data-id="<?php echo $msg['id']; ?>">
                                     <div class="t-bubble-meta t-border-bottom pb-2 mb-2">
                                         <span>
-                                            [ <?php echo $msg['timestamp']; ?> UTC ] LOCAL_TRANSMISSION:  
-                                            <strong class="text-success"><?php echo htmlspecialchars($msg['author_alias'] ?? 'LOCAL_COMMAND'); ?></strong>
+                                            [ <?php echo $msg['timestamp']; ?> UTC ] <?php echo $src_label; ?>  
+                                            <strong class="text-success"><?php echo $author; ?></strong>
                                         </span>
                                     </div>
                                     <p class="m-0" style="font-size: 14px;">
