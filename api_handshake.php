@@ -39,23 +39,18 @@ try {
         $from_planet = 'https://' . $from_planet;
     }
 
-    // Auto-generate alias for new follower
-    $parsed_url = parse_url($from_planet);
-    $domain_name = $parsed_url['host'] ?? 'UNKNOWN';
-    $path = rtrim($parsed_url['path'] ?? '', '/');
-    $alias = strip_tags($domain_name . $path);
-
     // 🗄️ [ V7.2 ] SIMPAN KE TABEL FOLLOWERS
-    // Pastikan kita menyimpan kunci (token) ini agar nanti jika kita mem-follow balik,
-    // kita tidak membuat kunci baru yang memicu paradoks.
+    // Bug "Alias" Dihapus. Hanya menyimpan URL dan Token ke dalam struktur memori yang tepat.
     $stmt_check_f = $db->prepare("SELECT id FROM followers WHERE planet_url = :url");
     $stmt_check_f->execute([':url' => $from_planet]);
+    
     if ($stmt_check_f->fetchColumn()) {
         $stmt_upd = $db->prepare("UPDATE followers SET handshake_token = :token WHERE planet_url = :url");
         $stmt_upd->execute([':token' => $handshake_token, ':url' => $from_planet]);
     } else {
-        $stmt_ins = $db->prepare("INSERT INTO followers (planet_url, alias, handshake_token) VALUES (:url, :alias, :token)");
-        $stmt_ins->execute([':url' => $from_planet, ':alias' => $alias, ':token' => $handshake_token]);
+        // [ DIPERBAIKI ]: Kolom 'alias' dihapus dari eksekusi ini karena tabel followers tidak memilikinya
+        $stmt_ins = $db->prepare("INSERT INTO followers (planet_url, handshake_token) VALUES (:url, :token)");
+        $stmt_ins->execute([':url' => $from_planet, ':token' => $handshake_token]);
     }
 
     // 🔑 [ V7.2 ] SYMMETRIC KEY ENFORCER

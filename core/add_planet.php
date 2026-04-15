@@ -42,7 +42,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 5); 
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    // [ V7.1 ] WAF Bypass
     curl_setopt($ch, CURLOPT_USERAGENT, 'RelayStation-Transmitter/7.2');
     
     $response = curl_exec($ch);
@@ -81,27 +80,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // ==========================================
         // 🔑 [ V7.2 ] THE SYMMETRIC KEY EXCHANGE FIX
         // ==========================================
-        // Jika kita sedang melakukan "Follow Back", cek apakah musuh sudah 
-        // pernah mengirimkan token mereka saat mereka mem-follow kita (ada di tabel followers).
-        // Jika ada, kita WAJIB menggunakan token mereka, bukan token baru.
-        
         $stmt_check = $db->prepare("SELECT handshake_token FROM followers WHERE planet_url = :url");
         $stmt_check->execute([':url' => $planet_url]);
         $existing_token = $stmt_check->fetchColumn();
 
         if (!empty($existing_token)) {
-            // Paradoks dihindari: Gunakan kunci yang sudah disepakati sebelumnya
             $handshake_token = $existing_token;
         }
 
-        // [ V7.2 ] Simpan Handshake Token ke dalam tabel following
-        // Menggunakan INSERT OR REPLACE agar jika ganti URL / force resync, token bisa ter-update
-        $stmt = $db->prepare("INSERT OR REPLACE INTO following (planet_url, alias, handshake_token) VALUES (:url, :alias, :token)");
+        // [ V7.2 ] Simpan Handshake Token tanpa mereset ID
+        $stmt_check_foll = $db->prepare("SELECT id FROM following WHERE planet_url = :url");
+        $stmt_check_foll->execute([':url' => $planet_url]);
+        
+        if ($stmt_check_foll->fetchColumn()) {
+            $stmt = $db->prepare("UPDATE following SET alias = :alias, handshake_token = :token WHERE planet_url = :url");
+        } else {
+            $stmt = $db->prepare("INSERT INTO following (planet_url, alias, handshake_token) VALUES (:url, :alias, :token)");
+        }
         $stmt->execute([ ':url' => $planet_url, ':alias' => $alias, ':token' => $handshake_token ]);
 
         // ==========================================
         // 🤝 [ THE HANDSHAKE PROTOCOL ]
-        // Send a "Knock-Knock" notification to the target planet
         // ==========================================
         $handshake_url = $planet_url . '/api_handshake.php';
         $hs_payload = json_encode([
@@ -113,11 +112,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         curl_setopt($ch_hs, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch_hs, CURLOPT_POST, true);
         curl_setopt($ch_hs, CURLOPT_POSTFIELDS, $hs_payload);
+        curl_setopt($ch_hs, CURLOPT_USERAGENT, 'RelayStation-Transmitter/7.2');
         curl_setopt($ch_hs, CURLOPT_HTTPHEADER, [
             'Content-Type: application/json',
-            'User-Agent: RelayStation-Transmitter/7.2'
+            'Content-Length: ' . strlen($hs_payload)
         ]);
-        curl_setopt($ch_hs, CURLOPT_TIMEOUT, 3);
+        curl_setopt($ch_hs, CURLOPT_TIMEOUT, 5);
         curl_setopt($ch_hs, CURLOPT_SSL_VERIFYPEER, false);
         curl_exec($ch_hs);
         curl_close($ch_hs);
