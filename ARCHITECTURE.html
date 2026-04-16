@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relay Station: Architecture Guide</title>
+</head>
+<body>
+
+    <h1>RELAY STATION: ARCHITECTURE & DEVELOPER GUIDE</h1>
+    <p><strong>CONFIDENTIAL:</strong> This document is the ultimate blueprint for future System Architects, Developers, or AI Assistants maintaining the Relay Station code. Read this before modifying the core engine.</p>
+    
+    <hr>
+
+    <h2>1. THE CORE DOCTRINE (PHILOSOPHY)</h2>
+    <p>Relay Station is not a standard web application; it is a decentralized, sovereign node. Every line of code must adhere to these four pillars:</p>
+    <ul>
+        <li><strong>Zero Dependency:</strong> Relay must run on the cheapest Shared Hosting possible. Do not introduce Composer, Node.js, or heavy third-party libraries. Stick to Vanilla PHP and Vanilla JS.</li>
+        <li><strong>True P2P (No Center):</strong> Assume every other station can go offline, change domains, or turn hostile at any time. The node must survive in isolation.</li>
+        <li><strong>Sovereignty over Consistency:</strong> If Node A disconnects from Node B, Node A immediately drops all incoming signals from Node B (including delete commands). Local sovereignty always overrides network consistency.</li>
+        <li><strong>The SQLite Doctrine:</strong> Core memory relies entirely on SQLite in <strong>WAL (Write-Ahead Logging)</strong> mode with <code>PRAGMA busy_timeout</code>. This prevents "database locked" errors during simultaneous P2P signal bombardments.</li>
+    </ul>
+
+    <hr>
+
+    <h2>2. SYSTEM ANATOMY (THE MAP)</h2>
+    <p>If you want to build a new feature or fix a bug, here is where you need to look:</p>
+
+    <h3>A. The Interface (UI/UX)</h3>
+    <ul>
+        <li><code>console.php</code>: The Commander's Dashboard. Handles the main timeline, AJAX infinite scroll, Push-to-Talk (PTT) engine, WebP image compression, and station settings.</li>
+        <li><code>index.php</code>: The Public Hologram. Displays <code>visibility = 'public'</code> transmissions to unauthenticated visitors. It strictly filters out foreign signals unless they are explicitly relayed (<code>is_relay = 1</code>).</li>
+        <li><code>direct.php</code>: The Secure Channel. Handles End-to-End Encrypted (RSA-OAEP) direct messages.</li>
+    </ul>
+
+    <h3>B. The Core Engines (P2P Routing)</h3>
+    <ul>
+        <li><code>core/api_inbox.php</code>: <strong>The Main Receiver (Shield).</strong> All incoming signals from the Constellation land here via POST requests. It handles Rate Limiting, Anti-Spoofing, The Anti-Loop Shield, and the Chain-Purge logic.</li>
+        <li><code>core/transmitter.php</code>: <strong>The Main Launcher (Cannon).</strong> Handles local file uploads, saves the post to the local SQLite database, and fires the JSON payload to allied stations using <code>curl_multi_exec</code> for asynchronous broadcasting.</li>
+    </ul>
+
+    <h3>C. Network Protocols (Handshakes & Radar)</h3>
+    <ul>
+        <li><code>core/add_planet.php</code>: Initiates a connection to a foreign node and fires the initial Handshake Token.</li>
+        <li><code>core/api_handshake.php</code>: Receives incoming connection requests and enforces the Symmetric Key Exchange to prevent 401 Spoofing.</li>
+        <li><code>core/radar_sweep.php</code>: Scans the Star Chart and automatically purges dead/offline nodes.</li>
+    </ul>
+
+    <hr>
+
+    <h2>3. CORE MEMORY (DATABASE SCHEMA)</h2>
+    <p>The database structure is defined in <code>schema.sql</code>.</p>
+    <ul>
+        <li><strong>transmissions:</strong> The main ledger for all broadcasts and direct messages.
+            <ul>
+                <li><code>is_remote</code>: 0 (Local) or 1 (Incoming).</li>
+                <li><code>is_relay</code> & <code>origin_id</code>: Used by The Relay Protocol. <code>origin_id</code> tracks the DNA of a message to prevent infinite Echo Chamber loops.</li>
+            </ul>
+        </li>
+        <li><strong>following / followers:</strong> The Star Chart. Stores URLs and the symmetric <code>handshake_token</code>.</li>
+        <li><strong>signal_resonance:</strong> Stores 'Roger That' acknowledgments. Uses a UNIQUE constraint on <code>(post_id, reactor_url)</code> as a database-level Anti-Spam shield.</li>
+        <li><strong>bookmarks:</strong> Uses <code>INNER JOIN</code> logic to save transmission IDs without duplicating message content.</li>
+    </ul>
+
+    <hr>
+
+    <h2>4. ARCHITECT'S WORKFLOW GUIDE</h2>
+    <p><em>"I want to build something new, where do I start?"</em></p>
+
+    <h3>Scenario 1: Adding a New Type of Signal (e.g., a "Poll")</h3>
+    <ol>
+        <li><strong>UI (<code>console.php</code>):</strong> Add the button/form for the user to trigger the signal via AJAX.</li>
+        <li><strong>Sender (<code>core/transmitter.php</code>):</strong> Intercept the new signal type. Save it locally, assemble the JSON capsule, and route it to the target nodes.</li>
+        <li><strong>Receiver (<code>core/api_inbox.php</code>):</strong> Catch the incoming payload. Validate it, sanitize it, and <code>INSERT</code> it into the local database.</li>
+    </ol>
+
+    <h3>Scenario 2: Modifying Database Tables</h3>
+    <ol>
+        <li><strong>Never edit <code>schema.sql</code> for existing users:</strong> It is only read during a fresh installation.</li>
+        <li><strong>Use the Migration Script (<code>core/upgrade_db.php</code>):</strong> Write a safe <code>try-catch</code> block executing an <code>ALTER TABLE</code> command. The OTA updater will run this for all users.</li>
+    </ol>
+
+    <h3>Scenario 3: Modifying Outbound API Requests</h3>
+    <p>You <strong>MUST</strong> include the WAF Bypass headers in any cURL request:</p>
+    <pre>
+curl_setopt($ch, CURLOPT_HTTPHEADER, [
+    'Content-Type: application/json',
+    'Content-Length: ' . strlen($json_payload),
+    'User-Agent: RelayStation-Transmitter/7.3'
+]);
+    </pre>
+
+    <hr>
+
+    <h2>5. TACTICAL PROTOCOLS EXPLAINED</h2>
+    <ul>
+        <li><strong>The Anti-Loop Shield:</strong> Prevents signal loops by checking the <code>origin_id</code> DNA before insertion.</li>
+        <li><strong>Cascading Chain-Purge:</strong> Forwarding destruction signals through trusted followers to ensure mirrored data is wiped across the entire Trust Chain.</li>
+        <li><strong>The Nomadic Protocol:</strong> Detecting domain changes and firing <code>resync</code> pulses to update all allied Star Charts automatically.</li>
+    </ul>
+
+	<hr>
+
+    <h2>6. LOCAL DEVELOPMENT & DEBUGGING</h2>
+    <p>Developing a P2P system on a local machine requires special configurations since the node expects absolute URLs and SSL/HTTPS.</p>
+
+    <h3>A. Simulating the Constellation</h3>
+    <p>To test P2P features (like Relay or Purge) locally, you should run at least two instances of the station on different ports:</p>
+    <ul>
+        <li><strong>Node A:</strong> <code>php -S localhost:8000</code></li>
+        <li><strong>Node B:</strong> <code>php -S localhost:8001</code></li>
+    </ul>
+    <p><em>Note:</em> You may need to temporarily disable or bypass the <code>ssl_shield.php</code> requirements in your development environment to allow non-HTTPS communication between local ports.</p>
+
+    <h3>B. Tactical Debugging (Where to look for errors)</h3>
+    <p>Since most P2P signals happen silently via cURL/AJAX, standard screen errors are rare. Use these logs instead:</p>
+    <ul>
+        <li><strong>Server-Side:</strong> Check the standard PHP <code>error_log</code> for cURL timeouts or SQLite PDO exceptions.</li>
+        <li><strong>Client-Side:</strong> Use the Browser Developer Tools (F12) Console to monitor AJAX responses from <code>console.php</code> and <code>api_inbox.php</code>.</li>
+        <li><strong>Database Integrity:</strong> Use an SQLite browser to inspect the <code>data/relay_core.sqlite</code> file directly and verify if <code>origin_id</code> or <code>is_relay</code> flags are correctly set.</li>
+    </ul>
+
+    <h3>C. Coding Conventions</h3>
+    <ul>
+        <li><strong>No External Bloat:</strong> Always prefer built-in PHP functions over adding new files.</li>
+        <li><strong>Security First:</strong> Every new entry point MUST include <code>require_once 'core/ssl_shield.php'</code> or equivalent protection.</li>
+        <li><strong>WAF Compliance:</strong> Ensure all outbound requests mimic the <code>RelayStation-Transmitter</code> User-Agent to avoid being flagged as a bot.</li>
+    </ul>	
+
+</body>
+</html>
