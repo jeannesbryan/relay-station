@@ -176,8 +176,7 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RESTRICTED - Relay</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.css">
+    <link rel="stylesheet" href="assets/terminal.css">
 </head>
 <body class="t-crt t-center-screen">
     <div class="t-center-box t-card danger mb-0">
@@ -205,7 +204,7 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
         </form>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
+    <script src="assets/terminal.js"></script>
     <script>
         const serverEncPriv = "<?php echo addslashes($pre_enc_priv); ?>";
         const serverPubKey = "<?php echo addslashes($pre_pub_key); ?>";
@@ -754,8 +753,7 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RELAY | Public Timeline</title>
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.css">
+    <link rel="stylesheet" href="assets/terminal.css">
     <link rel="manifest" href="manifest.json">
     <style>
         #installAppBtn { display: none; }
@@ -1201,7 +1199,7 @@ try {
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
+    <script src="assets/terminal.js"></script>
     <script>
         // ==========================================
         // ⚡ [ V7.2 & V7.3 ] THE SOCIAL SIGNAL ENGINE

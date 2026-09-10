@@ -127,8 +127,7 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo htmlspecialchars($station_name); ?> | Public Hologram</title>
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.css">
+    <link rel="stylesheet" href="assets/terminal.css">
     <style>
         .bunker-seal { min-height: 60vh; display: flex; flex-direction: column; justify-content: center; align-items: center; border: 2px dashed var(--t-red); background: rgba(255,0,65,0.05); }
         

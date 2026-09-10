@@ -72,8 +72,7 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RELAY | Secure Direct Links</title>
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.css">
+    <link rel="stylesheet" href="assets/terminal.css">
     <style>
         .chat-thread { display: none; }
         .chat-thread.active { display: block; }
@@ -300,7 +299,7 @@ try {
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.js"></script>
+    <script src="assets/terminal.js"></script>
     <script>
         // ==========================================
         // 🔐 [ V5.6 THE ENCRYPTED KEY VAULT (ENGINE & DECRYPTOR) ]

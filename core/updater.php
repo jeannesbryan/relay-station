@@ -95,7 +95,7 @@ if (version_compare($update_data['version'], $current_version, '>')) {
     }
     
     // Jika baru mengecek, tampilkan layar konfirmasi gaya Terminal UI
-    echo '<!DOCTYPE html><html lang="en"><head><title>SYSTEM UPDATE</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jeannesbryan/terminal/terminal.css"></head><body class="t-crt t-center-screen">';
+    echo '<!DOCTYPE html><html lang="en"><head><title>SYSTEM UPDATE</title><link rel="stylesheet" href="../assets/terminal.css"></head><body class="t-crt t-center-screen">';
     echo '<div class="t-center-box t-card warning mb-0" style="max-width: 500px;">';
     echo '<h2 class="t-card-header">> SYSTEM_UPDATE_DETECTED</h2>';
     echo "<p class='mb-2'>Versi Saat Ini: <strong>v{$current_version}</strong></p>";
