@@ -9,7 +9,7 @@
 // NOTE: as of v8.0 this file is no longer executed automatically. The OTA
 // updater that used to `include` everything matching core/upgrade_db*.php has
 // been removed (see core/updater.php). Run this manually after applying an
-// update:  php khusus/upgrade_db.php
+// update:  php installer/upgrade_db.php
 
 $db_file = __DIR__ . '/../data/relay_core.sqlite';
 

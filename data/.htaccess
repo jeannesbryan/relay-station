@@ -1,0 +1,42 @@
+# ==========================================================================
+# RELAY STATION: deny all access to data/
+# ==========================================================================
+# This directory holds relay_core.sqlite and its WAL sidecars. The database
+# contains captain_hash, encrypted_privkey and the Telegram bot token, and it
+# sits under the web root, so a plain GET for /data/relay_core.sqlite would
+# otherwise hand over every secret the node owns.
+#
+# v7.3 shipped no protection here at all - there was no .htaccess anywhere in
+# the repository.
+#
+# NOTE: this only protects Apache. If you serve Relay Station with nginx, add
+# the equivalent rule yourself:
+#
+#     location ~* ^/(data|installer)/ { deny all; return 404; }
+#     location ~* \.(sqlite|sqlite-wal|sqlite-shm|db)$ { deny all; return 404; }
+#
+# The installer also writes a copy of this file, so a node that predates v8.0
+# is covered after running the update.
+
+# Apache 2.4+
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+
+# Apache 2.2
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>
+
+# Belt and braces: refuse everything, then make the refusal explicit for the
+# file types that actually matter.
+<FilesMatch ".*">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>

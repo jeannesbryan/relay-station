@@ -96,8 +96,8 @@ Applying an update is manual, and deliberately so:
 
 1. **Back up first.** Copy `data/relay_core.sqlite` somewhere safe.
 2. Download the release from the repository and **verify its checksum or signature**.
-3. Replace the application files. Do **not** overwrite `data/`, `media/`, or `khusus/lighthouse_config.php`.
-4. If the release includes one, run the migration: `php khusus/upgrade_db.php`.
+3. Replace the application files. Do **not** overwrite `data/`, `media/`, or `installer/`.
+4. If the release includes one, run the migration: `php installer/upgrade_db.php`.
 
 For Telegram notifications setup, please refer to [TELEGRAM.md](TELEGRAM.md).
 
@@ -119,9 +119,9 @@ For Telegram notifications setup, please refer to [TELEGRAM.md](TELEGRAM.md).
 * **SSRF Protection:** Outbound node requests must be HTTPS on port 443 and resolve only to publicly routable addresses - loopback, private, link-local and cloud-metadata ranges are refused. The validated address is pinned so DNS cannot be re-pointed between the check and the connection.
 * **Verified TLS Everywhere:** Certificate and hostname verification is enabled on every outbound request. Five calls had it disabled.
 * **Hardened Sessions:** The session id is regenerated on login, strict mode is on, and cookies are `Secure`, `HttpOnly`, `SameSite=Strict` with idle and absolute lifetimes.
-* **Database Not Served Over HTTP:** `.htaccess` rules deny the SQLite database, its WAL sidecars, dotfiles and the `khusus/` directory, and directory listings are disabled.
+* **Database Not Served Over HTTP:** `.htaccess` rules deny the SQLite database, its WAL sidecars, dotfiles and the installer's scripts, and directory listings are disabled.
 * **Audited Uploads:** Media is size-capped and typed from its own magic bytes, so the extension on disk never comes from the filename the client supplied.
-* **Lighthouse Directory:** Removing a node from the public directory now requires an admin token (see `khusus/lighthouse_config.example.php`).
+* **Lighthouse Directory:** Appearing in the public directory is opt-in. Opting out needs no secret - the node simply stops reporting in and is dropped by the directory's sweeper. Removal of *other* nodes is a hub-operator action, so the admin token lives on the Lighthouse, never on a node.
 * **Rate Limiting & Anti-Spoofing:** `api_inbox.php` accepts a maximum of 5 signals per minute per client, and `api_handshake.php` 10 per 5 minutes. Client identity is taken from the TCP peer address; forwarded headers are only honoured when the request genuinely arrives from a published Cloudflare range, so rotating a header cannot defeat either limit.
 * **Symmetrical Firewall:** Incoming signals are only accepted if the sender's planet URL is explicitly listed in your Star Chart (Following list). Unknown intruders are automatically dropped.
 * **Anti-Brute Force Lockout:** The system automatically freezes the login radar for 15 minutes after 5 consecutive failed passcode attempts to protect against dictionary and bot attacks.

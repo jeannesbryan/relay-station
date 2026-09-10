@@ -42,7 +42,7 @@ set_time_limit(0);
 if (file_exists($db_file)) {
     http_response_code(409);
     die("<h2 style='color:#ff003c; background:#0a0a0a; padding:20px; font-family:monospace; text-align:center;'>"
-      . "[ STOP ] This station is already installed. Delete khusus/install.php from the server.</h2>");
+      . "[ STOP ] This station is already installed. Delete the installer/ directory from the server.</h2>");
 }
 
 if (!class_exists('ZipArchive')) {

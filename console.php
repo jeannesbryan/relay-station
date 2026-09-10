@@ -62,7 +62,7 @@ if (isset($_POST['export_station'])) {
                 // registration and installer logic tied to this specific node,
                 // and a backup archive is the last place it should travel.
                 $rel_norm = str_replace('\\', '/', $relativePath);
-                if (strpos($rel_norm, 'khusus/') === 0 || $rel_norm === 'khusus') {
+                if (strpos($rel_norm, 'installer/') === 0 || $rel_norm === 'installer') {
                     continue;
                 }
 
@@ -535,33 +535,45 @@ try {
                 'station_bio' => $bio
             ]);
         } else {
-            // Removing this node from the public directory is an
-            // administrative action and the lighthouse requires a token for
-            // it. Define LIGHTHOUSE_ADMIN_TOKEN in khusus/lighthouse_config.php
-            // to delist immediately; without it the request is refused and the
-            // node is picked up by the lighthouse's 7-day sweeper instead.
-            $kill_payload = [
-                'action' => 'kill',
-                'planet_url' => $current_local_url,
-            ];
-            $lighthouse_cfg = __DIR__ . '/khusus/lighthouse_config.php';
-            if (file_exists($lighthouse_cfg)) {
-                require_once $lighthouse_cfg;
-                if (defined('LIGHTHOUSE_ADMIN_TOKEN')) {
-                    $kill_payload['admin_token'] = LIGHTHOUSE_ADMIN_TOKEN;
-                }
-            }
-            $ping_data = json_encode($kill_payload);
+            // [ V8.0 ] Opt-out: stop reporting in. Send nothing.
+            //
+            // Two reasons this is the right shape:
+            //
+            // 1. Delisting is an administrative action on the hub and requires
+            //    a token that belongs to the hub operator - deliberately not to
+            //    node operators. A node holding that token could remove ANY
+            //    other node from the public directory, which is the same
+            //    vulnerability the hub's endpoint had before it was
+            //    authenticated. So a node does not delist itself.
+            //
+            // 2. Do NOT emit a ping here. A ping refreshes last_seen on the
+            //    hub, which would keep this node listed - the exact opposite of
+            //    opting out. Silence is what removes a node: the hub's existing
+            //    7-day sweeper drops anything that stops reporting.
+            //
+            // Privacy is preserved by simply going quiet, and no secret is
+            // needed to do it.
+            $ping_data = '';
         }
         
-        $ch = relay_node_curl('https://relay.emptyhub.my.id/api_register.php');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $ping_data);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 3);
-        @curl_exec($ch);
-        @curl_close($ch);
+        // relay_node_curl() returns null when the URL does not pass the
+        // outbound gate. It must be checked before use: curl_setopt(null, ...)
+        // is a TypeError (fatal) on PHP 8, so an unreachable or invalid hub URL
+        // would have taken the whole request down instead of being skipped.
+        if ($ping_data !== '') {
+            $ch = relay_node_curl('https://relay.emptyhub.my.id/api_register.php');
+            if ($ch) {
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $ping_data);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+                @curl_exec($ch);
+                @curl_close($ch);
+            } else {
+                error_log('[RELAY] lighthouse ping skipped: hub URL failed validation');
+            }
+        }
 
         exit;
     }

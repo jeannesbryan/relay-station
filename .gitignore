@@ -4,25 +4,27 @@
 # ==========================================
 
 # Abaikan folder memori & media
-/data/
-/media/
+#
+# NOTE: this must be /data/* and NOT /data/ . Git does not descend into an
+# excluded directory, so a negation for a file inside it can never match -
+# which silently left data/.htaccess untracked and a fresh clone with no
+# protection for the database it is about to create. Excluding the CONTENTS
+# instead lets the negation below take effect.
+/data/*
+/media/*
 
 # Abaikan file arsip installer & OTA
 *.zip
 
 # ---------------------------------------------------------------
-# The access rules inside data/ MUST be tracked, otherwise a fresh
-# clone has no protection for the database it is about to create.
-# The directory's contents stay ignored; only the rules travel.
+# The access rules inside data/ MUST be tracked. The directory's
+# runtime contents stay ignored; only the rules travel.
 # ---------------------------------------------------------------
 !/data/.htaccess
 
 # ---------------------------------------------------------------
-# Lighthouse admin token. The real file holds a secret; the example
-# documents the format and is tracked.
+# The installer kit ships in the release, but the archive it unpacks
+# (relay.zip) is a build artifact, not source - it is generated from
+# the application tree when a release is cut.
 # ---------------------------------------------------------------
-/khusus/lighthouse_config.php
-!/khusus/lighthouse_config.example.php
-
-# The lighthouse's own SQLite registry is runtime state, not source.
-/khusus/data/
+/installer/relay.zip

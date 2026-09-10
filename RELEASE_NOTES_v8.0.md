@@ -99,8 +99,8 @@ The console still performs a **read-only** version check and tells you when a ne
 > 1. Backup core memory:  cp data/relay_core.sqlite ~/relay-backup.sqlite
 > 2. Download the release and VERIFY its checksum or signature.
 > 3. Replace application files.
->    DO NOT overwrite data/ media/ or khusus/lighthouse_config.php
-> 4. Run migrations if the release ships one:  php khusus/upgrade_db.php
+>    DO NOT overwrite data/ media/ or installer/
+> 4. Run migrations if the release ships one:  php installer/upgrade_db.php
 > 5. Confirm the console reports the expected version.
 ```
 
@@ -145,10 +145,11 @@ This also fixed a real failure mode: the offline service worker precached those 
 
 - **PHP:** 7.4, 8.0, 8.1, 8.2+ (unchanged — the new code is deliberately 7.4-compatible)
 - **No new extensions required.**
-- **Action required:** after applying, run `php khusus/upgrade_db.php` once to repair the visibility constraint on existing databases. Back up `data/relay_core.sqlite` first.
-- **If you served the landing page from `khusus/`:** the access rules deny that directory's scripts and data while allowing the static page. Nothing to change.
+- **Action required:** after applying, run `php installer/upgrade_db.php` once to repair the visibility constraint on existing databases. Back up `data/relay_core.sqlite` first.
 - **If you used the one-click updater:** it is gone. Use the manual procedure above.
-- **Node delisting:** create `khusus/lighthouse_config.php` with an admin token (see the provided example). Without it, delisting is disabled and nodes are removed by the directory's existing sweeper.
+- **`khusus/` is now `installer/`.** The directory only ever held this node's installation kit; the name was a leftover. Update any deployment scripts that reference the old path.
+- **Node delisting needs no secret.** Appearing in the public directory is opt-in. To opt out, turn the setting off: the node stops reporting in and the directory's 7-day sweeper drops it. Removing *other* nodes is a hub-operator action, and the admin token for it lives on the Lighthouse - never on a node.
+- **The Lighthouse is a separate project.** The hub-side scripts (`api_register.php`, `api_directory.php`, the lighthouse setup and its admin config) are not part of this repository and are no longer bundled with a node installation.
 
 ---
 
