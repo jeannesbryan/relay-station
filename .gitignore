@@ -6,6 +6,7 @@
 # Abaikan folder memori & media
 /data/
 /media/
+/khusus/
 
 # Abaikan file arsip installer & OTA
 *.zip
