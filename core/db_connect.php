@@ -30,5 +30,8 @@ try {
     
 } catch (PDOException $e) {
     // Jika gagal terhubung, langsung matikan eksekusi dengan pesan Terminal UI
-    die("<h3 style='color: #ff0041; background: rgba(255,0,65,0.1); padding: 10px; border: 1px dashed #ff0041;'>[ CRITICAL ERROR ] Core Memory Offline: " . $e->getMessage() . "</h3>");
+    // The driver message discloses the database path and often the failing
+    // SQL. It belongs in the log, not in the response.
+    error_log('[RELAY] core memory offline: ' . $e->getMessage());
+    die("<h3 style='color: #ff0041; background: rgba(255,0,65,0.1); padding: 10px; border: 1px dashed #ff0041;'>[ CRITICAL ERROR ] Core Memory Offline.</h3>");
 }

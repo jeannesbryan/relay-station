@@ -4,13 +4,17 @@ require_once 'ssl_shield.php';
 // RELAY STATION: DISCONNECT PROTOCOL
 // Manually remove a planet's coordinates from the radar (Unfollow)
 
-relay_relay_session_start();
+relay_session_start();
 
 // Only the Commander may reach this endpoint.
 relay_require_auth(false);
 
-if (isset($_GET['id'])) {
-    $id = (int)$_GET['id'];
+// Destructive (deletes a federation link) and was reachable by GET, so a
+// single <a href> on any page could unfollow a node for a logged-in Commander.
+relay_require_post_and_csrf(false);
+
+if (isset($_POST['id'])) {
+    $id = (int) $_POST['id'];
     
     // 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
     require_once 'db_connect.php';
@@ -23,7 +27,8 @@ if (isset($_GET['id'])) {
         exit;
 
     } catch (PDOException $e) {
-        die("<h3 style='color:red;'>[ SYSTEM ERROR ] " . $e->getMessage() . "</h3>");
+        error_log('[RELAY] remove_planet failed: ' . $e->getMessage());
+        die("<h3 style='color:red;'>[ SYSTEM ERROR ]</h3>");
     }
 } else {
     header("Location: ../console.php");

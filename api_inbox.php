@@ -78,17 +78,13 @@ try {
     // 🛡️ [ FIREWALL: RATE LIMITER (ANTI-SPAM) ]
     // Limit: 5 signals per 60 seconds per IP
     // ==========================================
-    $db->exec("CREATE TABLE IF NOT EXISTS rate_limits (ip_address TEXT, timestamp DATETIME)");
-    $db->exec("DELETE FROM rate_limits WHERE timestamp <= datetime('now', '-60 seconds')");
-    
-    $stmt_rate = $db->prepare("SELECT COUNT(*) FROM rate_limits WHERE ip_address = :ip");
-    $stmt_rate->execute([':ip' => $sender_ip]);
-    if ($stmt_rate->fetchColumn() >= 5) {
+    // Limit: 5 signals per 60 seconds per client. See relay_rate_limit() for
+    // why this replaced the per-request delete-and-insert.
+    if (!relay_rate_limit($db, 'inbox:' . $sender_ip, 5, 60)) {
         http_response_code(429);
         echo json_encode(['status' => 'error', 'message' => '[ SHIELD REFLECTED ] Transmission rate limit exceeded.']);
         exit;
     }
-    $db->prepare("INSERT INTO rate_limits (ip_address, timestamp) VALUES (:ip, datetime('now'))")->execute([':ip' => $sender_ip]);
 
     // ==========================================
     // 🛡️ [ PAYLOAD SANITIZATION & EXTRACTION ]
@@ -96,7 +92,12 @@ try {
     // V7.3 Fallback: console.php uses sender_planet, transmitter uses from_planet
     $from_planet = filter_var(trim($signal['from_planet'] ?? $signal['sender_planet'] ?? ''), FILTER_SANITIZE_URL);
     $handshake_token = trim($signal['handshake_token'] ?? '');
-    $visibility = strip_tags(trim($signal['visibility'] ?? 'public'));
+    // Inbound federation traffic: an unknown visibility is refused outright
+    // rather than coerced, since the sender is remote and untrusted.
+    $visibility = relay_require_enum($signal['visibility'] ?? null, RELAY_VISIBILITY_VALUES);
+    if ($visibility === null) {
+        relay_fail('[ REJECTED ] Unknown visibility.', 'api_inbox: invalid visibility from remote node', 400, true);
+    }
     
     // 🔁 [ V7.3 THE RELAY PROTOCOL ]
     $is_relay = isset($signal['is_relay']) ? (int)$signal['is_relay'] : 0;
@@ -217,7 +218,8 @@ try {
                     'sender_planet' => $my_planet_url
                 ]);
                 foreach ($followers as $follower_url) {
-                    $ch = curl_init(rtrim($follower_url, '/') . '/api_inbox.php');
+                    $ch = relay_node_curl(rtrim($follower_url, '/') . '/api_inbox.php');
+                    if (!$ch) { continue; }
                     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                     curl_setopt($ch, CURLOPT_POST, true);
                     curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);

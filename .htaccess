@@ -1,0 +1,81 @@
+# ==========================================================================
+# RELAY STATION: ROOT HARDENING
+# ==========================================================================
+# Applied to the whole application. This is defence in depth behind the
+# application-level checks - it does not replace them, and it only has an
+# effect on Apache.
+
+# --------------------------------------------------------------------------
+# 1. Never serve database files or editor/backup leftovers
+# --------------------------------------------------------------------------
+# The SQLite database lives in data/ and its WAL sidecars share the same base
+# name. A .sqlite served over HTTP is a complete compromise: it carries
+# captain_hash, encrypted_privkey and the Telegram token. Blocking by extension
+# here covers the case where a file ends up somewhere other than data/.
+<FilesMatch "\.(sqlite|sqlite3|sqlite-wal|sqlite-shm|db|db-wal|db-shm)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# --------------------------------------------------------------------------
+# 2. Protect dotfiles
+# --------------------------------------------------------------------------
+# .env, .git, .gitignore and friends. .git in particular exposes the entire
+# source history, including any secret ever committed.
+<FilesMatch "^\.">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# --------------------------------------------------------------------------
+# 3. Deny the deployment-local directory
+# --------------------------------------------------------------------------
+# khusus/ holds installer, registration and migration scripts. They are meant
+# to be run by the operator, not reached over the web.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^khusus/ - [F,L]
+</IfModule>
+<IfModule mod_alias.c>
+    RedirectMatch 404 ^/.*/khusus/
+</IfModule>
+
+# --------------------------------------------------------------------------
+# 4. Directory listings off
+# --------------------------------------------------------------------------
+# Without this, a request for /data/ or /media/ with no index file returns a
+# browsable listing of every file in it.
+Options -Indexes
+
+# --------------------------------------------------------------------------
+# 5. No directory execution, and turn off PHP error display
+# --------------------------------------------------------------------------
+# Errors must not be rendered into responses: they leak paths and SQL. They
+# still reach the server log.
+<IfModule mod_php.c>
+    php_flag display_errors Off
+    php_flag log_errors On
+</IfModule>
+
+# --------------------------------------------------------------------------
+# 6. Baseline response headers
+# --------------------------------------------------------------------------
+# HSTS is deliberately not set here. It is a long-lived commitment for the
+# whole domain and should be enabled once you are certain every subdomain is
+# HTTPS-capable; a mistake locks users out. Add it deliberately:
+#     Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "no-referrer"
+    Header always set X-Frame-Options "DENY"
+</IfModule>

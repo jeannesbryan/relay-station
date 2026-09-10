@@ -10,7 +10,13 @@ date_default_timezone_set('UTC');
 // ==========================================
 // 🚀 [ V6.2 THE ESCAPE POD: DATABASE EXPORT ]
 // ==========================================
-if (isset($_GET['escape_pod']) && isset($_SESSION['relay_auth']) && $_SESSION['relay_auth'] === true) {
+if (isset($_POST['escape_pod'])) {
+    // State-changing and highly sensitive: this hands over the entire core
+    // database (captain_hash, encrypted_privkey, Telegram token). It was
+    // reachable by GET, which made it CSRF-able and cacheable; it is now POST
+    // with a CSRF token and an explicit auth check.
+    relay_require_auth(false);
+    relay_require_post_and_csrf(false);
     $db_file = 'data/relay_core.sqlite';
     if (file_exists($db_file)) {
         header('Content-Description: File Transfer');
@@ -30,7 +36,12 @@ if (isset($_GET['escape_pod']) && isset($_SESSION['relay_auth']) && $_SESSION['r
 // ==========================================
 // 🚀 [ V7.1 THE STATION ARCHIVE: FULL SOURCE & DATA EXPORT ]
 // ==========================================
-if (isset($_GET['export_station']) && isset($_SESSION['relay_auth']) && $_SESSION['relay_auth'] === true) {
+if (isset($_POST['export_station'])) {
+    // Same treatment: a full source + data archive triggered by GET was
+    // CSRF-able, so any page a logged-in Commander visited could pull the
+    // whole station down.
+    relay_require_auth(false);
+    relay_require_post_and_csrf(false);
     $zip_filename = 'RelayStation_Backup_' . date('Ymd_His') . '.zip';
     $zip_filepath = sys_get_temp_dir() . '/' . $zip_filename;
     
@@ -47,6 +58,14 @@ if (isset($_GET['export_station']) && isset($_SESSION['relay_auth']) && $_SESSIO
                 $filePath = $file->getRealPath();
                 $relativePath = substr($filePath, strlen($dir) + 1);
                 
+                // Never bundle the deployment-local directory. It holds
+                // registration and installer logic tied to this specific node,
+                // and a backup archive is the last place it should travel.
+                $rel_norm = str_replace('\\', '/', $relativePath);
+                if (strpos($rel_norm, 'khusus/') === 0 || $rel_norm === 'khusus') {
+                    continue;
+                }
+
                 $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
                 if ($ext !== 'zip' && $ext !== 'log') {
                     $zip->addFile($filePath, $relativePath);
@@ -110,7 +129,9 @@ try {
     $stmt = null; 
 
 } catch (PDOException $e) {
-    die("[ CRITICAL ERROR ] Security Protocol Failed: " . $e->getMessage());
+    // v7.3 printed the driver message to the browser, which discloses the
+    // database path and often the failing SQL. Log it, show nothing.
+    relay_fail('[ CRITICAL ERROR ] Security Protocol Failed.', 'lockout query failed: ' . $e->getMessage(), 500, false);
 }
 
 // ==========================================
@@ -127,6 +148,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_login'])) {
         if ($ip_status) {
             $db->prepare("DELETE FROM login_attempts WHERE ip_address = :ip")->execute([':ip' => $user_ip]);
         }
+        // Privilege escalation: issue a fresh session id so a pre-login
+        // session id cannot be fixated and reused after authentication.
+        relay_session_regenerate();
         $_SESSION['relay_auth'] = true;
         sendTelegramAlert("✅ *COMMANDER LOGIN DETECTED*\nAccess granted to Control Room.\nIP Address: `" . $user_ip . "`");
 
@@ -157,8 +181,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_login'])) {
     }
 }
 
-if (isset($_GET['logout'])) {
-    session_destroy();
+if (isset($_POST['logout'])) {
+    // Logout mutates session state, so it is POST + CSRF like everything else.
+    // GET logout is also a nuisance vector: any image tag on any page could
+    // force a Commander out of their session.
+    relay_require_post_and_csrf(false);
+    relay_session_destroy();
     header("Location: index.php"); exit;
 }
 
@@ -288,6 +316,18 @@ if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
 }
 
 // ==========================================
+// 🛡️ [ CSRF GATE FOR STATE-CHANGING ACTIONS ]
+// ==========================================
+// Every action in this file arrives as $_POST['action'] and mutates state
+// (bookmarks, relays, node URLs, station configuration, crypto keys, local
+// deletions). One gate covers all of them, so an action added later is
+// protected by default rather than by remembering to add a check.
+if (isset($_POST['action'])) {
+    relay_require_auth(false);
+    relay_require_post_and_csrf(false);
+}
+
+// ==========================================
 // 🚀 [ MAIN DASHBOARD PROCESSOR ]
 // ==========================================
 try {
@@ -354,7 +394,8 @@ try {
                 ]);
                 
                 foreach ($followers as $follower_url) {
-                    $ch = curl_init(rtrim($follower_url, '/') . '/api_inbox.php');
+                    $ch = relay_node_curl(rtrim($follower_url, '/') . '/api_inbox.php');
+                    if (!$ch) { continue; }
                     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                     curl_setopt($ch, CURLOPT_POST, true);
                     curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
@@ -391,7 +432,8 @@ try {
                 ]);
                 
                 foreach ($followers as $follower_url) {
-                    $ch = curl_init(rtrim($follower_url, '/') . '/api_inbox.php');
+                    $ch = relay_node_curl(rtrim($follower_url, '/') . '/api_inbox.php');
+                    if (!$ch) { continue; }
                     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                     curl_setopt($ch, CURLOPT_POST, true);
                     curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
@@ -410,8 +452,13 @@ try {
 
     // 🌐 [ V6.2 THE NOMADIC RE-SYNC DISPATCHER ]
     if (isset($_POST['action']) && $_POST['action'] === 'nomadic_resync') {
-        $new_url = filter_var(trim($_POST['new_url']), FILTER_SANITIZE_URL);
-        $old_url = filter_var(trim($_POST['old_url']), FILTER_SANITIZE_URL);
+        // FILTER_SANITIZE_URL only strips characters - it does not make a URL
+        // safe to fetch. Both of these end up as outbound curl targets, so
+        // they go through the SSRF gate (HTTPS-only, public addresses only,
+        // port 443 only).
+        $new_url = trim($_POST['new_url']);
+        $old_url = trim($_POST['old_url']);
+        relay_assert_safe_url($new_url, false);
         
         $db->prepare("DELETE FROM system_config WHERE config_key = 'local_planet_url'")->execute();
         $stmt = $db->prepare("INSERT INTO system_config (config_key, config_value) VALUES ('local_planet_url', :val)");
@@ -425,7 +472,10 @@ try {
                 'new_url' => $new_url,
                 'handshake_token' => $node['handshake_token']
             ]);
-            $ch = curl_init(rtrim($node['planet_url'], '/') . '/api_inbox.php');
+            $ch = relay_node_curl(rtrim($node['planet_url'], '/') . '/api_inbox.php');
+            if (!$ch) {
+                continue;
+            }
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
@@ -491,7 +541,7 @@ try {
             ]);
         }
         
-        $ch = curl_init('https://relay.emptyhub.my.id/api_register.php');
+        $ch = relay_node_curl('https://relay.emptyhub.my.id/api_register.php');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, $ping_data);
@@ -540,7 +590,8 @@ try {
                     'sender_planet' => $current_local_url
                 ]);
                 foreach ($followers as $follower_url) {
-                    $ch = curl_init(rtrim($follower_url, '/') . '/api_inbox.php');
+                    $ch = relay_node_curl(rtrim($follower_url, '/') . '/api_inbox.php');
+                    if (!$ch) { continue; }
                     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                     curl_setopt($ch, CURLOPT_POST, true);
                     curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
@@ -753,6 +804,48 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RELAY | Public Timeline</title>
+    <meta name="relay-csrf" content="<?php echo htmlspecialchars(relay_csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
+    <script>
+    // Attach the CSRF token to every same-origin POST automatically.
+    // Wrapping fetch() rather than editing each call site means a request added
+    // later is protected by default; manual edits silently miss new code, which
+    // is exactly how the original holes appeared.
+    (function () {
+        var meta = document.querySelector('meta[name="relay-csrf"]');
+        var token = meta ? meta.getAttribute('content') : '';
+        if (!token || !window.fetch) { return; }
+        var nativeFetch = window.fetch.bind(window);
+        window.fetch = function (input, init) {
+            var url = (typeof input === 'string') ? input : ((input && input.url) || '');
+            var isAbsolute = /^[a-z][a-z0-9+.-]*:\/\//i.test(url);
+            var sameOrigin = !isAbsolute || url.indexOf(window.location.origin) === 0;
+            init = init || {};
+            var method = String(init.method || (input && input.method) || 'GET').toUpperCase();
+            if (sameOrigin && method === 'POST') {
+                var headers = new Headers(init.headers || {});
+                if (!headers.has('X-CSRF-Token')) { headers.set('X-CSRF-Token', token); }
+                init.headers = headers;
+            }
+            return nativeFetch(input, init);
+        };
+
+        // POST-based logout. GET logout is no longer accepted, so anything that
+        // used to navigate to console.php?logout=true submits this instead.
+        window.relayLogout = function () {
+            var f = document.createElement('form');
+            f.method = 'POST';
+            f.action = window.location.pathname;
+            var t = document.createElement('input');
+            t.type = 'hidden'; t.name = 'relay_csrf'; t.value = token;
+            var l = document.createElement('input');
+            l.type = 'hidden'; l.name = 'logout'; l.value = '1';
+            f.appendChild(t);
+            f.appendChild(l);
+            document.body.appendChild(f);
+            f.submit();
+        };
+    })();
+    </script>
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="assets/terminal.css">
     <link rel="manifest" href="manifest.json">
@@ -845,7 +938,10 @@ try {
                 <button onclick="document.getElementById('control-room-modal').style.display='flex';" class="t-btn t-btn-sm" title="Configure Station">[ ⚙️ ]</button>
                 <button id="installAppBtn" class="t-btn t-btn-sm" title="Install PWA">[ 📥 ]</button>
                 <a href="core/updater.php" class="t-btn warning t-btn-sm" title="Check System Update">[ 🔄 ]</a>
-                <a href="console.php?logout=true" class="t-btn danger t-btn-sm" title="Logout">[ ➜] ]</a>
+                <form method="POST" action="console.php" class="d-inline-block m-0">
+                    <?php echo relay_csrf_field(); ?>
+                    <button type="submit" name="logout" value="1" class="t-btn danger t-btn-sm" title="Logout">[ ➜] ]</button>
+                </form>
             </div>
         </nav>
 
@@ -856,6 +952,7 @@ try {
                 
                 <div class="t-card">
                     <form action="core/transmitter.php" method="POST" enctype="multipart/form-data" class="m-0" id="broadcast-form">
+                <?php echo relay_csrf_field(); ?>
                         <input type="hidden" name="visibility" value="public">
                         <input type="hidden" name="media_base64" id="media-base64">
                         <input type="hidden" name="audio_base64" id="audio-base64">
@@ -1038,12 +1135,21 @@ try {
                                     <div class="fs-small text-warning mb-2">> PING DETECTED: <br><strong style="word-break: break-all;"><?php echo htmlspecialchars($alert['from_planet']); ?></strong></div>
                                     <div class="d-flex gap-2">
                                         <button onclick="acceptHandshake('<?php echo htmlspecialchars($alert['from_planet']); ?>', <?php echo $alert['id']; ?>)" class="t-btn warning w-100" style="padding:4px; font-size:11px;">[ FOLLOW BACK ]</button>
-                                        <a href="core/alert_action.php?id=<?php echo $alert['id']; ?>" class="t-btn danger w-100 text-center" style="padding:4px; font-size:11px; text-decoration:none;">[ IGNORE ]</a>
+                                        <form method="POST" action="core/alert_action.php" class="m-0">
+                                            <?php echo relay_csrf_field(); ?>
+                                            <input type="hidden" name="id" value="<?php echo (int)$alert['id']; ?>">
+                                            <button type="submit" class="t-btn danger w-100 text-center" style="padding:4px; font-size:11px;">[ IGNORE ]</button>
+                                        </form>
                                     </div>
                                 <?php elseif ($alert['type'] == 'new_dm'): ?>
                                     <div class="fs-small text-success mb-2">> ✉️ INCOMING LASER LINK: <br><strong style="word-break: break-all;"><?php echo htmlspecialchars($alert['from_planet']); ?></strong></div>
                                     <div class="d-flex gap-2">
-                                        <a href="core/alert_action.php?id=<?php echo $alert['id']; ?>&redirect=direct" class="t-btn w-100 text-center" style="padding:4px; font-size:11px; text-decoration:none; border-color: var(--t-green); color: var(--t-green);">[ READ MESSAGE ]</a>
+                                        <form method="POST" action="core/alert_action.php" class="m-0">
+                                            <?php echo relay_csrf_field(); ?>
+                                            <input type="hidden" name="id" value="<?php echo (int)$alert['id']; ?>">
+                                            <input type="hidden" name="redirect" value="direct">
+                                            <button type="submit" class="t-btn w-100 text-center" style="padding:4px; font-size:11px; border-color: var(--t-green); color: var(--t-green);">[ READ MESSAGE ]</button>
+                                        </form>
                                     </div>
                                 <?php elseif ($alert['type'] == 'sonar_pulse'): ?>
                                     <div class="fs-small text-danger t-blink mb-2">> 📡 TACTICAL SONAR DETECTED: <br><strong style="word-break: break-all;"><?php echo htmlspecialchars($alert['from_planet']); ?></strong></div>
@@ -1079,6 +1185,7 @@ try {
                     <?php endif; ?>
 
                     <form action="core/add_planet.php" method="POST" class="m-0" id="follow-form">
+                <?php echo relay_csrf_field(); ?>
                         <input type="hidden" name="handshake_token" value="<?php echo bin2hex(random_bytes(16)); ?>">
                         <input type="url" name="planet_url" id="target-planet-input" class="t-input mb-2" placeholder="https://domain.com" required>
                         <button type="submit" class="t-btn w-100 t-btn-sm">[ FOLLOW NODE ]</button>
@@ -1099,7 +1206,11 @@ try {
                                 </div>
                                 <div class="d-flex gap-2">
                                     <button onclick="openSonarModal('<?php echo htmlspecialchars($star['planet_url']); ?>', '<?php echo htmlspecialchars($clean_alias); ?>')" class="t-btn warning t-btn-sm flex-fill text-center" style="padding: 4px; font-size: 11px;">[ 📡 SONAR ]</button>
-                                    <a href="core/remove_planet.php?id=<?php echo $star['id']; ?>" class="t-btn danger t-btn-sm flex-fill text-center" style="padding: 4px; font-size: 11px; text-decoration: none;" onclick="return confirm('> WARNING: Disconnect from this node?');">[ ❌ DISCONNECT ]</a>
+                                    <form method="POST" action="core/remove_planet.php" class="flex-fill m-0" onsubmit="return confirm('> WARNING: Disconnect from this node?');">
+                                        <?php echo relay_csrf_field(); ?>
+                                        <input type="hidden" name="id" value="<?php echo (int)$star['id']; ?>">
+                                        <button type="submit" class="t-btn danger t-btn-sm w-100 text-center" style="padding: 4px; font-size: 11px;">[ ❌ DISCONNECT ]</button>
+                                    </form>
                                 </div>
                             </div>
                         <?php endforeach; ?>
@@ -1118,6 +1229,7 @@ try {
             </div>
             <div class="p-3" style="max-height: 80vh; overflow-y: auto;">
                 <form id="control-room-form" class="m-0">
+                <?php echo relay_csrf_field(); ?>
                     <div class="mb-3">
                         <label class="t-form-label">> STATION_NAME</label>
                         <input type="text" id="cr-name" class="t-input font-bold text-success" value="<?php echo htmlspecialchars($station_name); ?>" maxlength="30" required>
@@ -1148,8 +1260,14 @@ try {
                         <span class="font-bold text-success">> THE ESCAPE POD (DATA PORTABILITY)</span>
                         <div class="mt-2 fs-small text-muted">
                             > Download your core memory before migrating to a new domain. Restore it later to activate the <strong>Token Re-Sync Protocol</strong>.
-                            <a href="console.php?escape_pod=true" class="t-btn success t-btn-sm w-100 mt-2 text-center" style="text-decoration:none; display:block;">[ 📥 EXPORT CORE DATABASE ]</a>
-                            <a href="console.php?export_station=true" class="t-btn warning t-btn-sm w-100 mt-2 text-center font-bold" style="text-decoration:none; display:block;">[ 📦 BACKUP WHOLE STATION (ZIP) ]</a>
+                            <form method="POST" action="console.php" class="m-0 mt-2">
+                                <?php echo relay_csrf_field(); ?>
+                                <button type="submit" name="escape_pod" value="1" class="t-btn success t-btn-sm w-100 text-center">[ 📥 EXPORT CORE DATABASE ]</button>
+                            </form>
+                            <form method="POST" action="console.php" class="m-0 mt-2">
+                                <?php echo relay_csrf_field(); ?>
+                                <button type="submit" name="export_station" value="1" class="t-btn warning t-btn-sm w-100 text-center font-bold">[ 📦 BACKUP WHOLE STATION (ZIP) ]</button>
+                            </form>
                         </div>
                     </div>
 
@@ -1188,6 +1306,7 @@ try {
             <div class="p-3 text-center">
                 <div class="text-muted fs-small mb-3">> TARGET: <strong id="sonar-target-display" class="text-success"></strong></div>
                 <form id="sonar-form" action="core/transmitter.php" method="POST" class="m-0">
+                <?php echo relay_csrf_field(); ?>
                     <input type="hidden" name="visibility" value="sonar_pulse">
                     <input type="hidden" name="target_planet" id="sonar-target-input">
                     <div class="mb-3">
@@ -1367,7 +1486,7 @@ try {
                 if (serverPubKey && localPub !== serverPubKey) {
                     if (serverEncPriv) {
                         Terminal.toast('[!] IDENTITY OUT OF SYNC. RELOGIN REQUIRED.', 'danger');
-                        setTimeout(() => { window.location.href = 'console.php?logout=true'; }, 2000);
+                        setTimeout(() => { window.relayLogout(); }, 2000);
                         return;
                     } else {
                         document.getElementById('split-brain-modal').style.display = 'flex'; return;
@@ -1654,7 +1773,7 @@ try {
             }
             oscillator.stop(); btn.innerText = '[ ✓ DECODED ]';
             
-            fetch('core/alert_action.php?id=' + alertId + '&ajax=1').then(() => {
+            fetch('core/alert_action.php', { method: 'POST', body: (() => { const fd = new FormData(); fd.append('id', alertId); fd.append('ajax', '1'); return fd; })() }).then(() => {
                 setTimeout(() => {
                     const card = btn.closest('.t-card');
                     if(card) {
@@ -1694,7 +1813,7 @@ try {
         function acceptHandshake(url, alertId) {
             document.getElementById('target-planet-input').value = url;
             Terminal.splash.show('> PROCESSING_MUTUAL_LINK...');
-            fetch('core/alert_action.php?id=' + alertId + '&ajax=1').then(() => { document.getElementById('follow-form').submit(); });
+            fetch('core/alert_action.php', { method: 'POST', body: (() => { const fd = new FormData(); fd.append('id', alertId); fd.append('ajax', '1'); return fd; })() }).then(() => { document.getElementById('follow-form').submit(); });
         }
 
         let deferredPrompt; const installBtn = document.getElementById('installAppBtn');
@@ -1735,7 +1854,7 @@ try {
         function runRadarSweep() {
             const btn = document.getElementById('btn-sweep');
             btn.innerText = '[ PINGING... ]'; btn.disabled = true;
-            fetch('core/radar_sweep.php').then(r => r.text()).then(res => {
+            fetch('core/radar_sweep.php', { method: 'POST' }).then(r => r.text()).then(res => {
                 Terminal.toast(res, 'warning');
                 setTimeout(() => location.reload(), 2000); 
             });

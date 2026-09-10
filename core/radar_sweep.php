@@ -4,10 +4,13 @@ require_once 'ssl_shield.php';
 // RELAY STATION: DEEP SPACE RADAR SWEEP
 // Pings all nodes in the Star Chart. Dead/Error nodes will be purged.
 
-relay_relay_session_start();
+relay_session_start();
 
 // Only the Commander may reach this endpoint.
 relay_require_auth(false);
+// A sweep deletes nodes it judges dead, so it is a destructive action and
+// takes the same POST + CSRF treatment as the rest.
+relay_require_post_and_csrf(false);
 
 // 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
 require_once 'db_connect.php';
@@ -25,7 +28,8 @@ try {
     $curl_array = [];
     foreach ($nodes as $i => $node) {
         $ping_url = rtrim($node['planet_url'], '/') . '/api_ping.php';
-        $curl_array[$i] = curl_init($ping_url);
+        $curl_array[$i] = relay_node_curl($ping_url);
+        if (!$curl_array[$i]) { continue; }
         curl_setopt($curl_array[$i], CURLOPT_RETURNTRANSFER, true);
         curl_setopt($curl_array[$i], CURLOPT_TIMEOUT, 5); // 5 seconds max
         curl_setopt($curl_array[$i], CURLOPT_SSL_VERIFYPEER, true);

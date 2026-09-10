@@ -20,13 +20,18 @@ date_default_timezone_set('UTC'); // Enforce UTC to prevent Ghost Protocol timin
 // nothing. Anonymous POST is now rejected before any input is read.
 relay_session_start();
 relay_require_auth(false);
+// State-changing: writes transmissions, media files and outbound requests.
+relay_require_post_and_csrf(false);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // 1. [ V7.1 ] Capture & Sanitize Console Input (Local Defense)
     $content = strip_tags(trim($_POST['content'] ?? ''));
     $content_local = strip_tags(trim($_POST['content_local'] ?? $content)); 
-    $visibility = strip_tags(trim($_POST['visibility'] ?? 'public'));
+    // Strict allowlist. strip_tags() is not validation: it removes markup and
+    // then accepts any remaining string, so any value outside the intended set
+    // would flow on into storage and comparison.
+    $visibility = relay_require_enum($_POST['visibility'] ?? null, RELAY_VISIBILITY_VALUES, 'public');
     $target_planet = filter_var(trim($_POST['target_planet'] ?? ''), FILTER_SANITIZE_URL);
     
     // [ V7.2 & V7.3 ] Special tactical parameters
@@ -96,34 +101,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             foreach ($mb_items as $media_base64) {
                 if (empty($media_base64)) continue;
-                list($type, $media_base64) = explode(';', $media_base64);
-                list(, $media_base64)      = explode(',', $media_base64);
-                $media_data = base64_decode($media_base64);
-                
-                $filename = uniqid('sig_') . '.webp';
+
+                // Size-capped, and the extension comes from the file's magic
+                // bytes rather than from the declared data: type.
+                $decoded = relay_decode_media_data_url($media_base64, RELAY_MAX_MEDIA_BYTES);
+                if ($decoded === null) {
+                    error_log('[RELAY][SECURITY] rejected an invalid media payload');
+                    continue;
+                }
+
+                $filename = uniqid('sig_') . '.' . $decoded['ext'];
                 $filepath = $upload_dir . $filename;
-                
-                if (file_put_contents($filepath, $media_data)) {
+
+                if (file_put_contents($filepath, $decoded['data'])) {
                     $media_urls[] = $my_planet_url . '/media/' . $filename;
                 }
             }
         } 
         
         if (!empty($_POST['audio_base64'])) {
-            $audio_base64 = $_POST['audio_base64'];
-            list($type, $audio_base64) = explode(';', $audio_base64);
-            list(, $audio_base64)      = explode(',', $audio_base64);
-            $media_data = base64_decode($audio_base64);
-            
-            $ext = 'webm'; 
-            if (strpos($type, 'audio/mp4') !== false || strpos($type, 'video/mp4') !== false) $ext = 'm4a';
-            elseif (strpos($type, 'audio/ogg') !== false || strpos($type, 'video/ogg') !== false) $ext = 'ogg';
+            // Same treatment; the container extension is sniffed, not declared.
+            $decoded_audio = relay_decode_media_data_url($_POST['audio_base64'], RELAY_MAX_AUDIO_BYTES);
 
-            $filename = uniqid('ptt_') . '.' . $ext;
-            $filepath = $upload_dir . $filename;
-            
-            if (file_put_contents($filepath, $media_data)) {
-                $media_urls[] = $my_planet_url . '/media/' . $filename;
+            if ($decoded_audio !== null) {
+                $filename = uniqid('ptt_') . '.' . $decoded_audio['ext'];
+                $filepath = $upload_dir . $filename;
+
+                if (file_put_contents($filepath, $decoded_audio['data'])) {
+                    $media_urls[] = $my_planet_url . '/media/' . $filename;
+                }
+            } else {
+                error_log('[RELAY][SECURITY] rejected an invalid audio payload');
             }
         }
         
@@ -132,22 +140,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $file_names = is_array($files['name']) ? $files['name'] : [$files['name']];
             $file_tmp_names = is_array($files['tmp_name']) ? $files['tmp_name'] : [$files['tmp_name']];
             $file_errors = is_array($files['error']) ? $files['error'] : [$files['error']];
+            $file_sizes = is_array($files['size']) ? $files['size'] : [$files['size']];
 
-            $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4'];
-            
+            // Extension allowlists alone are not validation: the client picks
+            // the filename, so `shell.webp` passes the list and its content is
+            // never inspected. Each upload is now size-capped, required to be a
+            // genuine uploaded file (is_uploaded_file), and typed from its own
+            // magic bytes - the extension written to disk comes from the sniff,
+            // not from the name the client sent.
+            $audio_types = ['webm', 'ogg', 'm4a'];
+
             for ($i = 0; $i < count($file_names); $i++) {
-                if ($file_errors[$i] === UPLOAD_ERR_OK) {
-                    $file_ext = strtolower(pathinfo($file_names[$i], PATHINFO_EXTENSION));
-                    
-                    if (in_array($file_ext, $allowed_ext)) {
-                        $prefix = in_array($file_ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4']) ? 'ptt_' : 'sig_';
-                        $filename = uniqid($prefix) . '.' . $file_ext;
-                        $target_file = $upload_dir . $filename;
-                        
-                        if (move_uploaded_file($file_tmp_names[$i], $target_file)) {
-                            $media_urls[] = $my_planet_url . '/media/' . $filename;
-                        }
-                    }
+                $checked = relay_validate_upload([
+                    'tmp_name' => $file_tmp_names[$i] ?? '',
+                    'error'    => $file_errors[$i] ?? UPLOAD_ERR_NO_FILE,
+                    'size'     => (int) ($file_sizes[$i] ?? 0),
+                ], RELAY_MAX_AUDIO_BYTES);
+
+                if ($checked === null) {
+                    error_log('[RELAY][SECURITY] rejected an upload that failed validation');
+                    continue;
+                }
+
+                $prefix = in_array($checked['ext'], $audio_types, true) ? 'ptt_' : 'sig_';
+                $filename = uniqid($prefix) . '.' . $checked['ext'];
+                $target_file = $upload_dir . $filename;
+
+                if (move_uploaded_file($checked['tmp'], $target_file)) {
+                    $media_urls[] = $my_planet_url . '/media/' . $filename;
                 }
             }
         }
@@ -263,7 +283,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $ally_payload['handshake_token'] = $ally['handshake_token'] ?? '';
                     $json_payload = json_encode($ally_payload);
                     
-                    $curl_array[$i] = curl_init($target_url);
+                    $curl_array[$i] = relay_node_curl($target_url);
+                    if (!$curl_array[$i]) { continue; }
                     curl_setopt($curl_array[$i], CURLOPT_RETURNTRANSFER, true);
                     curl_setopt($curl_array[$i], CURLOPT_POST, true);
                     curl_setopt($curl_array[$i], CURLOPT_POSTFIELDS, $json_payload);
@@ -301,7 +322,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $direct_payload['handshake_token'] = $hs_token;
                 $json_payload = json_encode($direct_payload);
                 
-                $ch = curl_init($target_url);
+                $ch = relay_node_curl($target_url);
                 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                 curl_setopt($ch, CURLOPT_POST, true);
                 curl_setopt($ch, CURLOPT_POSTFIELDS, $json_payload);
@@ -334,7 +355,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(['status' => 'error']);
             exit;
         }
-        die("<h3 style='color:red;'>[ TRANSMISSION FAILED ] Core Memory Error: " . $e->getMessage() . "</h3>");
+        error_log('[RELAY] transmission failed: ' . $e->getMessage());
+        die("<h3 style='color:red;'>[ TRANSMISSION FAILED ] Core Memory Error.</h3>");
     }
 } else {
     die("<h3 style='color:red;'>[ ERROR ] Invalid Protocol. Use main console.</h3>");

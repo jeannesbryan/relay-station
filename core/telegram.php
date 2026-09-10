@@ -5,6 +5,25 @@
 // This helper script sends real-time radar alerts 
 // to the Commander's smartphone via Telegram Webhooks.
 
+/**
+ * Escape text for Telegram MarkdownV2.
+ *
+ * MarkdownV2 treats a fixed set of characters as markup. Anything not escaped
+ * can break the message or let an interpolated value render as a link. Values
+ * that reach these alerts include remote node URLs, so escaping matters.
+ */
+function relay_telegram_escape_markdownv2($text)
+{
+    $special = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'];
+    $out = '';
+    $len = strlen($text);
+    for ($i = 0; $i < $len; $i++) {
+        $c = $text[$i];
+        $out .= in_array($c, $special, true) ? '\\' . $c : $c;
+    }
+    return $out;
+}
+
 function sendTelegramAlert($message) {
     global $db;
 
@@ -35,23 +54,32 @@ function sendTelegramAlert($message) {
 
         $post_fields = [
             'chat_id' => $chat_id,
-            'text' => $formatted_message,
-            'parse_mode' => 'Markdown'
+            // The alert text embeds values that originate from other nodes -
+            // a remote station's URL arrives via api_handshake and is stored,
+            // then interpolated into this string. With parse_mode=Markdown
+            // those characters are interpreted as formatting, so a node could
+            // inject links or fake structure into the Commander's alerts.
+            // MarkdownV2 requires escaping everything outside a strict set.
+            'text' => relay_telegram_escape_markdownv2($formatted_message),
+            'parse_mode' => 'MarkdownV2'
         ];
 
-        // 4. Initialize cURL (The Courier)
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $telegram_url);
+        // 4. Build the request through the shared gate: certificate verified
+        //    against the host, HTTPS only, and redirects not followed (a
+        //    redirect would be a way to make this endpoint talk to a host it
+        //    was never validated against).
+        $ch = relay_node_curl($telegram_url);
+        if (!$ch) {
+            error_log('[ ORACLE ERROR ] refused to contact the Telegram API endpoint');
+            return false;
+        }
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_fields));
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        
-        // 🛡️ Tactical Timeout: 2 seconds maximum. 
-        // We don't want to slow down the main server if Telegram API is lagging.
-        curl_setopt($ch, CURLOPT_TIMEOUT, 2); 
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-        
+
+        // Tactical timeout: 2 seconds maximum. The Oracle must never slow the
+        // station down or hold a request open because Telegram is lagging.
+        curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+
         // 5. Fire the signal silently
         $response = curl_exec($ch);
         curl_close($ch);

@@ -630,6 +630,27 @@ function relay_http_get($url, $timeout = 10)
     return ['ok' => ($status >= 200 && $status < 300), 'status' => $status, 'body' => $body, 'error' => ''];
 }
 
+/**
+ * Validate a node URL and return a ready curl handle, or null if it is unsafe.
+ *
+ * Node URLs arrive from two places: operator input (add_planet, transmitter)
+ * and the stored Star Chart. Both are re-validated here at the moment of use.
+ * Re-validating stored URLs is not redundant - a hostname that resolved to a
+ * public address when it was saved can later resolve to a private one, and a
+ * check that lives at the point of use cannot be omitted by a future caller.
+ *
+ * Callers must treat null as "skip this node", not as "try anyway".
+ */
+function relay_node_curl($url)
+{
+    $resolved = [];
+    if (relay_url_is_safe($url, $resolved) !== true) {
+        error_log('[RELAY][SECURITY] refused outbound request to: ' . $url);
+        return null;
+    }
+    return relay_curl_init($url, $resolved);
+}
+
 // --------------------------------------------------------------------------
 // SECURITY HEADERS
 // --------------------------------------------------------------------------
@@ -645,6 +666,201 @@ function relay_send_security_headers()
     header('Cross-Origin-Resource-Policy: same-origin');
     // Deliberately no HSTS here: it is a long-lived commitment and belongs in
     // the web-server config next to the HTTPS redirect, not in application code.
+}
+
+// --------------------------------------------------------------------------
+// UPLOAD VALIDATION
+// --------------------------------------------------------------------------
+
+define('RELAY_MAX_MEDIA_BYTES', 5 * 1024 * 1024);   // 5 MB per file
+define('RELAY_MAX_AUDIO_BYTES', 10 * 1024 * 1024);  // 10 MB per voice note
+
+/**
+ * Identify a file from its leading bytes.
+ *
+ * Returns a canonical type ('webp', 'webm', 'ogg', 'm4a') or null. The
+ * extension written to disk is derived from THIS, never from the type the
+ * caller declared - the declared type in a data: URL is attacker-controlled
+ * and only describes intent.
+ */
+function relay_sniff_media_type($data)
+{
+    if (!is_string($data) || strlen($data) < 12) {
+        return null;
+    }
+    $head = substr($data, 0, 16);
+
+    // WebP: "RIFF" .... "WEBP"
+    if (substr($head, 0, 4) === 'RIFF' && substr($head, 8, 4) === 'WEBP') {
+        return 'webp';
+    }
+    // Matroska / WebM: EBML header 1A 45 DF A3
+    if (substr($head, 0, 4) === "\x1A\x45\xDF\xA3") {
+        return 'webm';
+    }
+    // Ogg: "OggS"
+    if (substr($head, 0, 4) === 'OggS') {
+        return 'ogg';
+    }
+    // ISO base media (m4a/mp4): "....ftyp" at offset 4
+    if (substr($head, 4, 4) === 'ftyp') {
+        return 'm4a';
+    }
+    return null;
+}
+
+/**
+ * Decode and validate a data: URL body, or return null.
+ *
+ * v7.3 wrote whatever base64 it was handed straight into media/ with an
+ * extension fixed to .webp - no size limit and no content check. It could not
+ * be turned into PHP execution because the extension is not .php, but it was
+ * an unauthenticated arbitrary-file-write primitive inside the web root, at
+ * unbounded size, with the served content-type taken from the request.
+ *
+ * @return array{data:string,ext:string}|null
+ */
+function relay_decode_media_data_url($value, $max_bytes)
+{
+    if (!is_string($value) || $value === '') {
+        return null;
+    }
+    if (strpos($value, ',') === false) {
+        return null;
+    }
+    list(, $encoded) = explode(',', $value, 2);
+
+    // Reject whitespace and anything that is not base64 before decoding, so a
+    // multi-megabyte string of junk is not decoded just to be discarded.
+    $encoded = str_replace(' ', '+', trim($encoded));
+    if ($encoded === '' || strlen($encoded) > (int) ceil($max_bytes * 4 / 3) + 64) {
+        return null;
+    }
+    if (!preg_match('~^[A-Za-z0-9+/]+={0,2}$~', $encoded)) {
+        return null;
+    }
+
+    $data = base64_decode($encoded, true);
+    if ($data === false || $data === '') {
+        return null;
+    }
+    if (strlen($data) > $max_bytes) {
+        return null;
+    }
+
+    $ext = relay_sniff_media_type($data);
+    if ($ext === null) {
+        return null;
+    }
+
+    return ['data' => $data, 'ext' => $ext];
+}
+
+/**
+ * Validate a real multipart upload.
+ *
+ * Forces is_uploaded_file() (so a path cannot be smuggled in via $_FILES) and
+ * re-derives the extension from the file's own magic bytes.
+ *
+ * @return array{tmp:string,ext:string,size:int}|null
+ */
+function relay_validate_upload($file, $max_bytes)
+{
+    if (!is_array($file) || !isset($file['tmp_name'], $file['error'], $file['size'])) {
+        return null;
+    }
+    if ((int) $file['error'] !== UPLOAD_ERR_OK) {
+        return null;
+    }
+    if ((int) $file['size'] > $max_bytes || (int) $file['size'] <= 0) {
+        return null;
+    }
+    if (!is_uploaded_file($file['tmp_name'])) {
+        return null;
+    }
+
+    $head = (string) @file_get_contents($file['tmp_name'], false, null, 0, 16);
+    $ext = relay_sniff_media_type($head);
+    if ($ext === null) {
+        return null;
+    }
+
+    return ['tmp' => $file['tmp_name'], 'ext' => $ext, 'size' => (int) $file['size']];
+}
+
+// --------------------------------------------------------------------------
+// RATE LIMITING
+// --------------------------------------------------------------------------
+
+/**
+ * Fixed-window rate limiter backed by SQLite.
+ *
+ * Returns true when the caller is within budget, false when it has been
+ * exceeded. The key is a caller-supplied bucket string, so the same counter
+ * serves different endpoints independently.
+ *
+ * DESIGN NOTE - why this replaced the v7.3 limiter in api_inbox.php:
+ * that version ran `DELETE FROM rate_limits WHERE timestamp <= ...` on EVERY
+ * inbound request and then inserted one row per request. That is a full-table
+ * scan-and-delete plus a write, per signal, on a database that is also serving
+ * reads - write amplification directly on the hot path, and the table grows
+ * once per request inside the window. Keeping one row per bucket per window
+ * removes both: the update is a single indexed row, and pruning is
+ * opportunistic and bounded so it can never dominate a request.
+ */
+function relay_rate_limit(PDO $db, $bucket, $limit, $window_seconds)
+{
+    $now = time();
+    $window_start = $now - ($now % max(1, (int) $window_seconds));
+    $bucket = (string) $bucket;
+
+    $db->exec("CREATE TABLE IF NOT EXISTS relay_rate_limits (
+        bucket TEXT NOT NULL,
+        window_start INTEGER NOT NULL,
+        hits INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (bucket, window_start)
+    )");
+
+    // Read-modify-write inside a transaction. SQLite serialises writers, so
+    // this is race-free without needing an upsert syntax that older SQLite
+    // builds may not support.
+    $db->beginTransaction();
+    try {
+        $sel = $db->prepare("SELECT hits FROM relay_rate_limits WHERE bucket = :b AND window_start = :w");
+        $sel->execute([':b' => $bucket, ':w' => $window_start]);
+        $hits = $sel->fetchColumn();
+
+        if ($hits === false) {
+            $db->prepare("INSERT INTO relay_rate_limits (bucket, window_start, hits) VALUES (:b, :w, 1)")
+               ->execute([':b' => $bucket, ':w' => $window_start]);
+            $hits = 1;
+        } else {
+            $hits = (int) $hits + 1;
+            $db->prepare("UPDATE relay_rate_limits SET hits = :h WHERE bucket = :b AND window_start = :w")
+               ->execute([':h' => $hits, ':b' => $bucket, ':w' => $window_start]);
+        }
+        $db->commit();
+    } catch (Exception $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        error_log('[RELAY] rate limit update failed: ' . $e->getMessage());
+        // Fail open on an internal error: a broken counter must not become an
+        // outage. The request still passes every other check.
+        return true;
+    }
+
+    // Prune occasionally, and only rows far outside any active window.
+    if (random_int(1, 50) === 1) {
+        try {
+            $db->prepare("DELETE FROM relay_rate_limits WHERE window_start < :cutoff")
+               ->execute([':cutoff' => $now - ((int) $window_seconds * 10)]);
+        } catch (Exception $e) {
+            error_log('[RELAY] rate limit prune failed: ' . $e->getMessage());
+        }
+    }
+
+    return $hits <= $limit;
 }
 
 // --------------------------------------------------------------------------

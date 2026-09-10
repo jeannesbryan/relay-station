@@ -6,7 +6,13 @@
 # Abaikan folder memori & media
 /data/
 /media/
-/khusus/
 
 # Abaikan file arsip installer & OTA
 *.zip
+
+# ---------------------------------------------------------------
+# The access rules inside data/ MUST be tracked, otherwise a fresh
+# clone has no protection for the database it is about to create.
+# The directory's contents stay ignored; only the rules travel.
+# ---------------------------------------------------------------
+!/data/.htaccess

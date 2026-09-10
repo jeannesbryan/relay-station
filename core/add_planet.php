@@ -6,10 +6,12 @@ require_once 'ssl_shield.php';
 // Equipped with The Symmetric Key Exchange Protocol
 // ==========================================
 
-relay_relay_session_start();
+relay_session_start();
 
 // Only the Commander may reach this endpoint.
 relay_require_auth(false);
+// Creates a federation link and fires an outbound handshake. POST + CSRF only.
+relay_require_post_and_csrf(false);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // [ V7.1 ] Advanced Sanitization
@@ -18,6 +20,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if (empty($planet_url)) {
         header("Location: ../console.php?error=empty_url");
+        exit;
+    }
+
+    // SSRF gate. FILTER_SANITIZE_URL only strips characters; it does not make a
+    // URL safe to fetch. This value becomes an outbound curl target, so it must
+    // be HTTPS, a public address, and a standard port. The operator gets the
+    // existing 'invalid_node' UX rather than a hard stop.
+    if (relay_url_is_safe($planet_url) !== true) {
+        header("Location: ../console.php?error=invalid_node");
+        exit;
+    }
+    if (rtrim($planet_url, '/') === rtrim($my_planet_url, '/')) {
+        header("Location: ../console.php?error=self_node");
         exit;
     }
 
@@ -38,7 +53,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $ping_url = $planet_url . '/api_ping.php';
     
-    $ch = curl_init($ping_url);
+    $ch = relay_node_curl($ping_url);
+    if (!$ch) {
+        header("Location: ../console.php?error=invalid_node");
+        exit;
+    }
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 5); 
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
@@ -109,7 +128,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'handshake_token' => $handshake_token 
         ]);
 
-        $ch_hs = curl_init($handshake_url);
+        $ch_hs = relay_node_curl($handshake_url);
+        if (!$ch_hs) {
+            header("Location: ../console.php?error=invalid_node");
+            exit;
+        }
         curl_setopt($ch_hs, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch_hs, CURLOPT_POST, true);
         curl_setopt($ch_hs, CURLOPT_POSTFIELDS, $hs_payload);
@@ -129,7 +152,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
 
     } catch (PDOException $e) {
-        die("<h3 style='color:red;'>[ SYSTEM ERROR ] Core Memory Malfunction: " . $e->getMessage() . "</h3>");
+        error_log('[RELAY] add_planet failed: ' . $e->getMessage());
+        die("<h3 style='color:red;'>[ SYSTEM ERROR ] Core Memory Malfunction.</h3>");
     }
 } else {
     die("INVALID_PROTOCOL");

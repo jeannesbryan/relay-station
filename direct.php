@@ -74,6 +74,48 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RELAY | Secure Direct Links</title>
+    <meta name="relay-csrf" content="<?php echo htmlspecialchars(relay_csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
+    <script>
+    // Attach the CSRF token to every same-origin POST automatically.
+    // Wrapping fetch() rather than editing each call site means a request added
+    // later is protected by default; manual edits silently miss new code, which
+    // is exactly how the original holes appeared.
+    (function () {
+        var meta = document.querySelector('meta[name="relay-csrf"]');
+        var token = meta ? meta.getAttribute('content') : '';
+        if (!token || !window.fetch) { return; }
+        var nativeFetch = window.fetch.bind(window);
+        window.fetch = function (input, init) {
+            var url = (typeof input === 'string') ? input : ((input && input.url) || '');
+            var isAbsolute = /^[a-z][a-z0-9+.-]*:\/\//i.test(url);
+            var sameOrigin = !isAbsolute || url.indexOf(window.location.origin) === 0;
+            init = init || {};
+            var method = String(init.method || (input && input.method) || 'GET').toUpperCase();
+            if (sameOrigin && method === 'POST') {
+                var headers = new Headers(init.headers || {});
+                if (!headers.has('X-CSRF-Token')) { headers.set('X-CSRF-Token', token); }
+                init.headers = headers;
+            }
+            return nativeFetch(input, init);
+        };
+
+        // POST-based logout. GET logout is no longer accepted, so anything that
+        // used to navigate to console.php?logout=true submits this instead.
+        window.relayLogout = function () {
+            var f = document.createElement('form');
+            f.method = 'POST';
+            f.action = window.location.pathname;
+            var t = document.createElement('input');
+            t.type = 'hidden'; t.name = 'relay_csrf'; t.value = token;
+            var l = document.createElement('input');
+            l.type = 'hidden'; l.name = 'logout'; l.value = '1';
+            f.appendChild(t);
+            f.appendChild(l);
+            document.body.appendChild(f);
+            f.submit();
+        };
+    })();
+    </script>
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="assets/terminal.css">
     <style>
@@ -269,6 +311,7 @@ try {
                 </div>
 
                 <form action="core/transmitter.php" method="POST" enctype="multipart/form-data" id="reply-form" style="display:none;" class="m-0 mt-3 t-card p-3">
+                <?php echo relay_csrf_field(); ?>
                     <input type="hidden" name="visibility" value="direct">
                     <input type="hidden" name="content_local" id="content-local-input">
                     

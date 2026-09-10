@@ -40,6 +40,26 @@ try {
         $from_planet = 'https://' . $from_planet;
     }
 
+    // [ V8.0 ] RATE LIMIT
+    // This endpoint had none. Any host that knew the URL could POST repeatedly
+    // and, with no authentication and no limit, write unbounded rows into
+    // `followers` and fire an unlimited number of Telegram alerts - a free
+    // resource-exhaustion and notification-spam primitive. Keyed on the
+    // resolved client IP, which cannot be spoofed via forwarded headers.
+    if (!relay_rate_limit($db, 'handshake:' . relay_client_ip(), 10, 300)) {
+        http_response_code(429);
+        echo json_encode(['status' => 'error', 'message' => '[ SHIELD REFLECTED ] Handshake rate limit exceeded.']);
+        exit;
+    }
+
+    // The stored value becomes an outbound federation target later, so it must
+    // be a well-formed HTTPS URL rather than whatever the sender typed.
+    if (relay_url_is_safe($from_planet) !== true) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => '[ SHIELD REFLECTED ] Invalid origin coordinates.']);
+        exit;
+    }
+
     // 🗄️ [ V7.2 ] SIMPAN KE TABEL FOLLOWERS
     // Bug "Alias" Dihapus. Hanya menyimpan URL dan Token ke dalam struktur memori yang tepat.
     $stmt_check_f = $db->prepare("SELECT id FROM followers WHERE planet_url = :url");
