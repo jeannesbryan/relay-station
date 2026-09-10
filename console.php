@@ -535,10 +535,23 @@ try {
                 'station_bio' => $bio
             ]);
         } else {
-            $ping_data = json_encode([
+            // Removing this node from the public directory is an
+            // administrative action and the lighthouse requires a token for
+            // it. Define LIGHTHOUSE_ADMIN_TOKEN in khusus/lighthouse_config.php
+            // to delist immediately; without it the request is refused and the
+            // node is picked up by the lighthouse's 7-day sweeper instead.
+            $kill_payload = [
                 'action' => 'kill',
-                'planet_url' => $current_local_url
-            ]);
+                'planet_url' => $current_local_url,
+            ];
+            $lighthouse_cfg = __DIR__ . '/khusus/lighthouse_config.php';
+            if (file_exists($lighthouse_cfg)) {
+                require_once $lighthouse_cfg;
+                if (defined('LIGHTHOUSE_ADMIN_TOKEN')) {
+                    $kill_payload['admin_token'] = LIGHTHOUSE_ADMIN_TOKEN;
+                }
+            }
+            $ping_data = json_encode($kill_payload);
         }
         
         $ch = relay_node_curl('https://relay.emptyhub.my.id/api_register.php');

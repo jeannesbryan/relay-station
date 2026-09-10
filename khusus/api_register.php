@@ -1,7 +1,12 @@
 <?php
 require_once __DIR__ . '/../core/security.php';
 ob_start(); // Taktik pembersihan output agar JSON murni
-header("Access-Control-Allow-Origin: https://relay.emptyhub.my.id"); 
+// This is a public, unauthenticated node directory API: it uses no cookies and
+// returns no per-user data, so a wildcard origin does not enable CSRF or data
+// theft here - CORS only constrains browsers, and nodes call it server-to-server
+// where CORS does not apply at all. Restrict it if you want to limit which
+// sites may read the directory from a browser.
+header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
 header("Content-Type: application/json; charset=UTF-8");
@@ -28,8 +33,22 @@ if ($action === 'ping' && empty($signal['station_name'])) {
 }
 
 $planet_url = rtrim(trim($signal['planet_url']), '/');
-$station_name = htmlspecialchars(trim($signal['station_name'] ?? ''));
-$station_bio = htmlspecialchars(trim($signal['station_bio'] ?? ''));
+
+// This value is stored and then served to every client that reads the
+// directory, so it has to be a real, externally reachable HTTPS address.
+if (relay_url_is_safe($planet_url) !== true) {
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => 'Invalid planet_url.']);
+    exit;
+}
+
+// Store the text as given and escape on OUTPUT. Escaping on input bakes the
+// entities into the database, so every consumer then double-escapes and the
+// stored value no longer round-trips.
+$station_name = trim($signal['station_name'] ?? '');
+$station_bio  = trim($signal['station_bio'] ?? '');
+if (mb_strlen($station_name) > 100) { $station_name = mb_substr($station_name, 0, 100); }
+if (mb_strlen($station_bio) > 500)  { $station_bio  = mb_substr($station_bio, 0, 500); }
 
 try {
     $db = new PDO('sqlite:' . __DIR__ . '/data/lighthouse.sqlite');
@@ -38,25 +57,15 @@ try {
     // 🛡️ [ INJEKSI ANTI TABRAKAN DATA (3 DETIK) ]
     $db->exec('PRAGMA busy_timeout = 3000;');
 
-    // 🛡️ 1. THE RATE LIMITER ENGINE
-    $db->exec("CREATE TABLE IF NOT EXISTS rate_limits (ip TEXT PRIMARY KEY, attempts INTEGER, last_attempt DATETIME DEFAULT CURRENT_TIMESTAMP)");
-    $db->exec("DELETE FROM rate_limits WHERE last_attempt < datetime('now', '-1 minute')"); // Bersihkan log > 1 menit
-
-    $stmt_limit = $db->prepare("SELECT attempts FROM rate_limits WHERE ip = :ip");
-    $stmt_limit->execute([':ip' => $user_ip]);
-    $limit = $stmt_limit->fetch(PDO::FETCH_ASSOC);
-
-    if ($limit && $limit['attempts'] >= 5) {
+    // 🛡️ 1. RATE LIMIT
+    // Shares relay_rate_limit() with the node's own inbox. The previous
+    // implementation ran a full-table DELETE on every request and relied on an
+    // upsert syntax that older SQLite builds do not support.
+    if (!relay_rate_limit($db, 'lighthouse-register:' . $user_ip, 5, 60)) {
         ob_end_clean();
-        http_response_code(429); // 429 Too Many Requests
+        http_response_code(429);
         echo json_encode(['status' => 'error', 'message' => 'Rate limit exceeded. Tactical shield engaged.']); exit;
     }
-
-    // Catat / Tambah jumlah tembakan dari IP ini
-    $db->prepare("
-        INSERT INTO rate_limits (ip, attempts, last_attempt) VALUES (:ip, 1, CURRENT_TIMESTAMP)
-        ON CONFLICT(ip) DO UPDATE SET attempts = attempts + 1, last_attempt = CURRENT_TIMESTAMP
-    ")->execute([':ip' => $user_ip]);
 
 
     // 🧹 2. THE SWEEPER (Hapus stasiun mati > 7 hari)
@@ -64,13 +73,60 @@ try {
 
 
     // 💥 3. THE KILL SIGNAL EXECUTION
+    //
+    // [ V8.0 ] THIS WAS UNAUTHENTICATED.
+    // `kill` deletes a node from the public registry, and the only thing it
+    // was checked against was the subject line in the request body. Any host
+    // that knew the URL could POST {"action":"kill","planet_url":"<any node>"}
+    // and remove somebody else's listing - a censorship and denial-of-service
+    // primitive aimed at the directory itself.
+    //
+    // It now requires an admin token. The config file is deliberately NOT in
+    // the repository: create khusus/lighthouse_config.php on the lighthouse
+    // host and put a random string in it.
+    //
+    //     <?php define('LIGHTHOUSE_ADMIN_TOKEN', '<64 random hex chars>');
+    //
+    // If the file is missing, `kill` is DISABLED rather than left open. Nodes
+    // that cannot delist simply stop pinging; the 7-day sweeper removes them.
     if ($action === 'kill') {
+        $config_file = __DIR__ . '/lighthouse_config.php';
+        $configured_token = null;
+        if (file_exists($config_file)) {
+            require_once $config_file;
+            if (defined('LIGHTHOUSE_ADMIN_TOKEN')) {
+                $configured_token = (string) LIGHTHOUSE_ADMIN_TOKEN;
+            }
+        }
+
+        $supplied_token = (string) ($signal['admin_token'] ?? '');
+
+        if ($configured_token === null || $configured_token === '') {
+            error_log('[RELAY][SECURITY] kill refused: no LIGHTHOUSE_ADMIN_TOKEN configured');
+            ob_end_clean();
+            http_response_code(503);
+            echo json_encode(['status' => 'error', 'message' => 'Node removal is not enabled on this lighthouse.']);
+            exit;
+        }
+
+        if ($supplied_token === '' || !hash_equals($configured_token, $supplied_token)) {
+            error_log('[RELAY][SECURITY] kill refused: bad or missing admin token from ' . $user_ip);
+            ob_end_clean();
+            http_response_code(403);
+            echo json_encode(['status' => 'error', 'message' => '[ SHIELD REFLECTED ] Authorisation required.']);
+            exit;
+        }
+
         $stmt_kill = $db->prepare("DELETE FROM registry WHERE planet_url = :url");
         $stmt_kill->execute([':url' => $planet_url]);
-        
+
         ob_end_clean();
         http_response_code(200);
-        echo json_encode(['status' => 'success', 'message' => 'Node vaporized from directory.', 'url' => $planet_url]);
+        echo json_encode([
+            'status' => 'success',
+            'message' => 'Node vaporized from directory.',
+            'url' => htmlspecialchars($planet_url, ENT_QUOTES, 'UTF-8'),
+        ]);
         exit;
     }
 
@@ -89,10 +145,15 @@ try {
 
     ob_end_clean();
     http_response_code(200);
-    echo json_encode(['status' => 'success', 'message' => 'Docked.', 'url' => $planet_url]);
+    echo json_encode([
+        'status' => 'success',
+        'message' => 'Docked.',
+        'url' => htmlspecialchars($planet_url, ENT_QUOTES, 'UTF-8'),
+    ]);
 
 } catch (PDOException $e) {
     ob_end_clean();
     http_response_code(500);
-    echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
+    error_log('[RELAY] lighthouse register failed: ' . $e->getMessage());
+    echo json_encode(['status' => 'error', 'message' => 'Database error.']);
 }

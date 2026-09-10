@@ -16,3 +16,13 @@
 # The directory's contents stay ignored; only the rules travel.
 # ---------------------------------------------------------------
 !/data/.htaccess
+
+# ---------------------------------------------------------------
+# Lighthouse admin token. The real file holds a secret; the example
+# documents the format and is tracked.
+# ---------------------------------------------------------------
+/khusus/lighthouse_config.php
+!/khusus/lighthouse_config.example.php
+
+# The lighthouse's own SQLite registry is runtime state, not source.
+/khusus/data/

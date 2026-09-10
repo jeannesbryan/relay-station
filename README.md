@@ -13,12 +13,12 @@ Built purely with **PHP** and **SQLite**, it is designed to run on absolutely an
 Relay Station is designed to be extremely lightweight and can be hosted on a $1/month shared hosting plan or a Raspberry Pi.
 * **PHP:** Version 7.4, 8.0, 8.1, or 8.2+
 * **Database:** SQLite3 (No MySQL/MariaDB setup required)
-* **Required PHP Extensions:** `cURL` (for transmission), `pdo_sqlite` (for core memory), `ZipArchive` (for OTA updates, installation, & backups), and `gd` or `fileinfo` (for media processing).
+* **Required PHP Extensions:** `cURL` (for transmission), `pdo_sqlite` (for core memory), `ZipArchive` (for installation & backups), `mbstring`, and `gd` or `fileinfo` (for media processing).
 * **Security:** An active SSL/HTTPS certificate is strictly required for the domain/subdomain.
 
 ---
 
-## 🚀 Core Capabilities & Features (v7.3 - The Relay Protocol)
+## 🚀 Core Capabilities & Features (v8.0 - Aegis)
 
 * **100% Data Sovereignty:** You own the server, the database, and the media. There is no central database.
 * **🔁 The Relay Protocol (NEW):** Seamlessly re-broadcast and curate transmissions from allied nodes across your Constellation. Propagate valuable intel through a decentralized Trust Chain without algorithms. You maintain full control to manually `[ UNRELAY ]` and clean your local database at any time.
@@ -46,7 +46,7 @@ Relay Station is designed to be extremely lightweight and can be hosted on a $1/
 * **Bunker Mode (Private Node):** Toggle your station into stealth mode at any time. Your public hologram timeline will be sealed from outsiders, and any incoming follower requests will be held in your console for manual approval.
 * **Deep Space Radar Sweep:** An automated pinging system that scans your Star Chart. If an allied node goes offline or is destroyed, your radar automatically purges them from your database to keep your node clean.
 * **Client-Side WebP Compression:** Uploaded media is compressed into lightweight WebP format directly in the user's browser before transmission, saving massive server bandwidth.
-* **Self-Healing OTA Updates:** A built-in Over-The-Air (OTA) updater that allows station commanders to patch their node to the latest version with a single click.
+* **Update Check:** The console reports when a newer release has been published. Applying it is a manual, documented procedure - see *Updating the Station* below. (The previous one-click Over-The-Air updater was removed in v8.0: it downloaded and executed code from the network with no signature check, which made it a remote-code-execution path rather than a convenience.)
 
 ---
 
@@ -90,19 +90,39 @@ Relay Station utilizes a highly secure **Drop-Pod Installation** method.
 5. The system will extract the core files, build the SQLite database, secure the data directories, and **automatically delete the installer files** to prevent unauthorized access.
 
 ### Updating the Station
-When a new version is available, you do not need to download anything manually. Simply click the **`[ SYS_UPDATE ]`** button inside your Relay Console to initiate the Over-The-Air patch. For Telegram notifications setup, please refer to [TELEGRAM.md](TELEGRAM.md).
+The **`[ SYS_UPDATE ]`** button in your Relay Console checks whether a newer release has been published. It does **not** install anything.
+
+Applying an update is manual, and deliberately so:
+
+1. **Back up first.** Copy `data/relay_core.sqlite` somewhere safe.
+2. Download the release from the repository and **verify its checksum or signature**.
+3. Replace the application files. Do **not** overwrite `data/`, `media/`, or `khusus/lighthouse_config.php`.
+4. If the release includes one, run the migration: `php khusus/upgrade_db.php`.
+
+For Telegram notifications setup, please refer to [TELEGRAM.md](TELEGRAM.md).
+
+> **Why the automatic updater was removed.** The v7.3 updater fetched a ZIP and executed the code inside it without establishing where that ZIP came from - TLS verification was disabled on the beacon, the payload had no host allowlist or signature, extraction accepted `../` paths, and each extracted script was then `include`d. Any single point along that chain meant remote code execution. Since nothing in it proved the archive was genuine, it could not be made safe by adding checks around the edges, so the automated path is gone.
 
 ---
 
 ## 🛡️ Security Systems
 
 * **The Anti-Loop Shield (NEW):** Blocks infinite relay loops and echo chambers by enforcing strict `origin_id` tracking across the entire network.
-* **Advanced HTML Sanitization:** Extreme data purging mechanisms (strip_tags, filter_var) neutralize XSS payloads and malicious scripts from foreign nodes before they can breach the core memory.
+* **Strict Input Validation:** Values that control behaviour are checked against strict allowlists rather than stripped of markup - `strip_tags()` removes tags but accepts any remaining string. Output is escaped at the point of rendering.
 * **The Oracle Sentinel:** Real-time Telegram alerts for successful Commander logins and anti-brute force lockouts, providing an immediate layer of defensive awareness.
 * **Symmetric Key Exchange Enforcer:** Perfect cryptographic alignment during the mutual follow sequence. Stations exchange and enforce symmetrical tokens upon connection to completely eliminate 401 Spoofing Paradox errors across the Constellation.
 * **End-to-End Encryption (E2E):** Direct messages use Dual-Ciphertext Routing. Your Private Key never leaves your browser's local storage, ensuring a Zero-Knowledge architecture—even server admins cannot read the SQLite database.
 * **Cloudflare WAF Integration:** To protect your node from DDoS without breaking the P2P Constellation, follow the [Official WAF Defense Guide (SECURITY.md)](SECURITY.md).
-* **Rate Limiting & Anti-Spoofing:** The `api_inbox.php` endpoint restricts incoming transmissions to a maximum of 5 signals per minute per IP address.
+
+#### Added in v8.0 (Aegis)
+* **CSRF & POST-only Actions:** Every state-changing action requires POST plus a per-session CSRF token. Actions that were previously reachable by a plain link (`logout`, database export, station backup, unfollow, alert dismissal) now cannot be triggered by a third-party page.
+* **SSRF Protection:** Outbound node requests must be HTTPS on port 443 and resolve only to publicly routable addresses - loopback, private, link-local and cloud-metadata ranges are refused. The validated address is pinned so DNS cannot be re-pointed between the check and the connection.
+* **Verified TLS Everywhere:** Certificate and hostname verification is enabled on every outbound request. Five calls had it disabled.
+* **Hardened Sessions:** The session id is regenerated on login, strict mode is on, and cookies are `Secure`, `HttpOnly`, `SameSite=Strict` with idle and absolute lifetimes.
+* **Database Not Served Over HTTP:** `.htaccess` rules deny the SQLite database, its WAL sidecars, dotfiles and the `khusus/` directory, and directory listings are disabled.
+* **Audited Uploads:** Media is size-capped and typed from its own magic bytes, so the extension on disk never comes from the filename the client supplied.
+* **Lighthouse Directory:** Removing a node from the public directory now requires an admin token (see `khusus/lighthouse_config.example.php`).
+* **Rate Limiting & Anti-Spoofing:** `api_inbox.php` accepts a maximum of 5 signals per minute per client, and `api_handshake.php` 10 per 5 minutes. Client identity is taken from the TCP peer address; forwarded headers are only honoured when the request genuinely arrives from a published Cloudflare range, so rotating a header cannot defeat either limit.
 * **Symmetrical Firewall:** Incoming signals are only accepted if the sender's planet URL is explicitly listed in your Star Chart (Following list). Unknown intruders are automatically dropped.
 * **Anti-Brute Force Lockout:** The system automatically freezes the login radar for 15 minutes after 5 consecutive failed passcode attempts to protect against dictionary and bot attacks.
 * **Strict SSL Enforcement:** All endpoints, including UI and API P2P receivers, strictly require encrypted HTTPS connections. Unsecured HTTP requests are automatically redirected or rejected to prevent packet sniffing.

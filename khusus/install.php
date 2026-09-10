@@ -2,7 +2,25 @@
 // RELAY STATION: DROP-POD INSTALLER V7.2 (The Social Signal Update)
 // This script will extract core files, build the database, and self-destruct.
 
-session_start();
+// ---------------------------------------------------------------------------
+// [ V8.0 ] SESSION HARDENING
+// ---------------------------------------------------------------------------
+// The installer authenticates nobody, but it does set the master passcode and
+// then logs itself in. A pre-created session id could therefore be fixated
+// across installation, so the cookie is locked down and the id is regenerated
+// at the moment of privilege change (below).
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1');
+    ini_set('session.cookie_httponly', '1');
+    ini_set('session.cookie_samesite', 'Strict');
+    $installer_secure = (!empty($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) !== 'off')
+                     || (int) ($_SERVER['SERVER_PORT'] ?? 0) === 443;
+    if ($installer_secure) {
+        ini_set('session.cookie_secure', '1');
+    }
+    session_start();
+}
 
 $zip_file = 'relay.zip'; 
 $schema_file = 'schema.sql';
@@ -13,6 +31,19 @@ $success_msg = null;
 
 // Disable execution time limit for slow hosting servers
 set_time_limit(0);
+
+// ---------------------------------------------------------------------------
+// [ V8.0 ] RUN-ONCE GUARD
+// ---------------------------------------------------------------------------
+// This script is remotely reachable and, on a successful run, sets the master
+// passcode from an unauthenticated POST and logs the caller in as captain.
+// Whoever reached it first therefore owned the node. There is also nothing to
+// install once it has run, so it now refuses as soon as a database exists.
+if (file_exists($db_file)) {
+    http_response_code(409);
+    die("<h2 style='color:#ff003c; background:#0a0a0a; padding:20px; font-family:monospace; text-align:center;'>"
+      . "[ STOP ] This station is already installed. Delete khusus/install.php from the server.</h2>");
+}
 
 if (!class_exists('ZipArchive')) {
     die("<h2 style='color:#ff003c; background:#0a0a0a; padding:20px; font-family:monospace; text-align:center;'>[ CRITICAL ERROR ] Your hosting server does not support PHP ZipArchive. Installation aborted.</h2>");
@@ -26,6 +57,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['passcode'])) {
     if (file_exists($zip_file)) {
         $zip = new ZipArchive;
         if ($zip->open($zip_file) === TRUE) {
+
+            // [ V8.0 ] ZIP-SLIP GUARD
+            // extractTo(__DIR__) with no entry validation: an archive entry
+            // named ../../x.php, an absolute path, or a Windows drive path
+            // escapes the destination entirely and can overwrite anything the
+            // web user can write - which is remote code execution. Every entry
+            // is now confirmed to land inside the destination before anything
+            // is written, and the whole archive is rejected if any entry fails
+            // so a hostile file cannot be partially applied.
+            $bad_entry = null;
+
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $entry = $zip->getNameIndex($i);
+                if ($entry === false) { $bad_entry = '(unreadable entry)'; break; }
+
+                $norm = str_replace('\\', '/', $entry);
+
+                $is_bad = ($norm === '')
+                    || ($norm[0] === '/')                        // absolute
+                    || (bool) preg_match('~^[A-Za-z]:/~', $norm)  // windows drive
+                    || (strpos($norm, "\0") !== false)            // null byte
+                    || (strpos('/' . $norm . '/', '/../') !== false); // traversal
+
+                // Resolve the path segment by segment. This is a lexical check,
+                // deliberately NOT realpath(): the archive has not been
+                // extracted yet, so directories it is about to create do not
+                // exist, and realpath() would return false for every legitimate
+                // nested entry - blocking a valid installation.
+                if (!$is_bad) {
+                    $depth = 0;
+                    foreach (explode('/', $norm) as $seg) {
+                        if ($seg === '' || $seg === '.') { continue; }
+                        if ($seg === '..') {
+                            $depth--;
+                            if ($depth < 0) { $is_bad = true; break; }
+                            continue;
+                        }
+                        $depth++;
+                    }
+                }
+
+                if ($is_bad) { $bad_entry = $entry; break; }
+            }
+
+            if ($bad_entry !== null) {
+                $zip->close();
+                error_log('[RELAY][SECURITY] installer rejected archive entry: ' . $bad_entry);
+                die("<h2 style='color:#ff003c; background:#0a0a0a; padding:20px; font-family:monospace; text-align:center;'>"
+                  . "[ SECURITY STOP ] The archive contains an unsafe path and was not extracted.</h2>");
+            }
+
             $extract_success = $zip->extractTo(__DIR__);
             $zip->close();
 
@@ -34,7 +116,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['passcode'])) {
                 // 2. DATA & MEDIA BUNKER CONSTRUCTION
                 if (!is_dir($data_dir)) mkdir($data_dir, 0755, true);
                 // Lock data folder from direct browser access
-                file_put_contents($data_dir . '/.htaccess', "Deny from all\n");
+                // Deny for both Apache 2.2 and 2.4. The old single-line
+                // "Deny from all" is Apache 2.2 syntax and is ignored by 2.4
+                // without mod_access_compat, which would leave the database
+                // unprotected on a modern host.
+                file_put_contents($data_dir . '/.htaccess',
+                    "<IfModule mod_authz_core.c>\n    Require all denied\n</IfModule>\n"
+                  . "<IfModule !mod_authz_core.c>\n    Order allow,deny\n    Deny from all\n</IfModule>\n");
                 
                 $media_dir = 'media';
                 if (!is_dir($media_dir)) mkdir($media_dir, 0755, true);
@@ -81,7 +169,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['passcode'])) {
                         
                         @unlink(__FILE__);     // Delete install.php (This script itself!)
                         
-                        // Automatic Captain login
+                        // Automatic Captain login. Regenerate first: the id
+                        // in use during installation must not become the id of
+                        // the authenticated session.
+                        session_regenerate_id(true);
                         $_SESSION['relay_auth'] = true;
 
                         // Redirect to console after 3 seconds
@@ -90,7 +181,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['passcode'])) {
                         $error_msg = "[ ERROR ] File schema.sql not found!";
                     }
                 } catch (PDOException $e) {
-                    $error_msg = "[ DATABASE ERROR ] " . $e->getMessage();
+                    // The driver message contains the database path.
+                    error_log('[RELAY] installer database error: ' . $e->getMessage());
+                    $error_msg = "[ DATABASE ERROR ] Installation failed. Check the server log.";
                 }
 
             } else {
@@ -110,10 +203,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['passcode'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RELAY | Genesis Deployment</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
         :root { --t-green: #00ff41; --bg-base: #030303; --t-red: #ff003c; }
-        body { background: var(--bg-base); color: var(--t-green); font-family: 'JetBrains Mono', monospace; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        /* No third-party font. The installer is the first page a node ever
+           serves; loading a typeface from Google would beacon the node's very
+           first request to a third party. */
+        body { background: var(--bg-base); color: var(--t-green); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
         .t-card { background: #0a0a0a; border: 1px solid var(--t-green); padding: 30px; width: 100%; max-width: 450px; text-align: center; box-shadow: 0 0 15px rgba(0,255,65,0.1); box-sizing: border-box; }
         
         /* Modifikasi Input Group untuk Show/Hide */
@@ -142,7 +237,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['passcode'])) {
             
             <?php if($error_msg): ?>
                 <div style="background: rgba(255,0,60,0.1); color: var(--t-red); border: 1px dashed var(--t-red); padding: 10px; font-size: 12px; margin-bottom: 20px; text-align: left;">
-                    <?php echo $error_msg; ?>
+                    <?php echo htmlspecialchars($error_msg, ENT_QUOTES, 'UTF-8'); ?>
                 </div>
             <?php endif; ?>
 
