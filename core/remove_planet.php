@@ -1,6 +1,6 @@
 <?php
-require_once 'ssl_shield.php';
 require_once __DIR__ . '/security.php';
+require_once 'ssl_shield.php';
 // RELAY STATION: DISCONNECT PROTOCOL
 // Manually remove a planet's coordinates from the radar (Unfollow)
 

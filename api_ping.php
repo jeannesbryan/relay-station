@@ -11,8 +11,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 // 🛡️ SECURITY OVERRIDE: Sekarang panggil pelindung SSL setelah CORS aman.
-require_once 'core/ssl_shield.php';
 require_once 'core/security.php';
+require_once 'core/ssl_shield.php';
 
 // ==========================================
 // 📡 RELAY STATION: IDENTIFICATION BEACON

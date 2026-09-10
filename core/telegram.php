@@ -49,7 +49,8 @@ function sendTelegramAlert($message) {
         // 🛡️ Tactical Timeout: 2 seconds maximum. 
         // We don't want to slow down the main server if Telegram API is lagging.
         curl_setopt($ch, CURLOPT_TIMEOUT, 2); 
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
         
         // 5. Fire the signal silently
         $response = curl_exec($ch);

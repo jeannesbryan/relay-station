@@ -1,6 +1,6 @@
 <?php
-require_once 'core/ssl_shield.php';
 require_once 'core/security.php';
+require_once 'core/ssl_shield.php';
 // ==========================================
 // 📡 RELAY STATION: ATMOSPHERIC SHIELD & INBOX (v7.3)
 // Endpoint to receive incoming signals (POST) from foreign nodes. 
@@ -71,7 +71,7 @@ if (isset($signal['action']) && $signal['action'] === 'resync') {
 require_once 'core/db_connect.php';
 require_once 'core/telegram.php'; // [ V7.0 THE ORACLE ]
 
-$sender_ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN';
+$sender_ip = relay_client_ip();
 
 try {
     // ==========================================

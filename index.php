@@ -1,6 +1,6 @@
 <?php
-require_once 'core/ssl_shield.php';
 require_once 'core/security.php';
+require_once 'core/ssl_shield.php';
 // ==========================================
 // 📡 RELAY STATION: PUBLIC HOLOGRAM (SOVEREIGN PROFILE)
 // The station's interface for public visitors. 

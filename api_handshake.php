@@ -1,6 +1,6 @@
 <?php
-require_once 'core/ssl_shield.php';
 require_once 'core/security.php';
+require_once 'core/ssl_shield.php';
 // ==========================================
 // 🤝 RELAY STATION: HANDSHAKE PROTOCOL (V7.2)
 // Receives a signal that a foreign station has just followed this node.

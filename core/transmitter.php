@@ -1,6 +1,6 @@
 <?php
-require_once 'ssl_shield.php';
 require_once __DIR__ . '/security.php';
+require_once 'ssl_shield.php';
 // ==========================================================
 // 🚀 RELAY STATION: TRANSMITTER ENGINE (V7.3)
 // Handles Public, Direct, Ghost Protocol, Media, Sonar Pulse, ACKs, 

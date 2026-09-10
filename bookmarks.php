@@ -1,6 +1,6 @@
 <?php
-require_once 'core/ssl_shield.php';
 require_once 'core/security.php';
+require_once 'core/ssl_shield.php';
 // ==========================================
 // 📌 RELAY STATION: THE MEMORY VAULT (BOOKMARKS)
 // V7.2 - Displays saved transmissions using INNER JOIN.

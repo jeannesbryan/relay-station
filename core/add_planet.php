@@ -1,6 +1,6 @@
 <?php
-require_once 'ssl_shield.php';
 require_once __DIR__ . '/security.php';
+require_once 'ssl_shield.php';
 // ==========================================
 // 🚀 RELAY STATION: STAR CHART UPDATER (V7.2)
 // Equipped with The Symmetric Key Exchange Protocol
@@ -41,7 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ch = curl_init($ping_url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 5); 
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
     curl_setopt($ch, CURLOPT_USERAGENT, 'RelayStation-Transmitter/7.2');
     
     $response = curl_exec($ch);
@@ -118,7 +119,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'Content-Length: ' . strlen($hs_payload)
         ]);
         curl_setopt($ch_hs, CURLOPT_TIMEOUT, 5);
-        curl_setopt($ch_hs, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch_hs, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch_hs, CURLOPT_SSL_VERIFYHOST, 2);
         curl_exec($ch_hs);
         curl_close($ch_hs);
         // ==========================================

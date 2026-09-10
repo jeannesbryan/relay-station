@@ -1,6 +1,6 @@
 <?php
-require_once 'ssl_shield.php';
 require_once __DIR__ . '/security.php';
+require_once 'ssl_shield.php';
 // ==========================================
 // 🔔 RELAY STATION: ALERT HANDLER (V7.2)
 // Clears radar notifications. For "Follow Back" actions, 

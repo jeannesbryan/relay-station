@@ -1,6 +1,6 @@
 <?php
-require_once 'core/ssl_shield.php';
 require_once 'core/security.php';
+require_once 'core/ssl_shield.php';
 // ==========================================
 // 🔒 [ SECURITY OVERRIDE: ENCRYPTED SESSION ]
 // ==========================================
@@ -84,7 +84,7 @@ require_once 'core/telegram.php';
 // ==========================================
 // 🛡️ ANTI-BRUTE FORCE LOCKOUT PROTOCOL
 // ==========================================
-$user_ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN';
+$user_ip = relay_client_ip();
 $is_locked = false;
 $login_error = null;
 

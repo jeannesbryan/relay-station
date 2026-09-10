@@ -1,6 +1,6 @@
 <?php
-require_once 'ssl_shield.php';
 require_once __DIR__ . '/security.php';
+require_once 'ssl_shield.php';
 // RELAY STATION: OVER-THE-AIR (OTA) UPDATER ENGINE
 // Menarik rilis terbaru dari pusat komando dan menambal sistem secara otomatis.
 
@@ -24,7 +24,8 @@ if (file_exists('../version.json')) {
 $ch = curl_init($remote_beacon_url);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
 $remote_json = curl_exec($ch);
 curl_close($ch);
 

@@ -1,6 +1,6 @@
 <?php
-require_once 'ssl_shield.php';
 require_once __DIR__ . '/security.php';
+require_once 'ssl_shield.php';
 // RELAY STATION: DEEP SPACE RADAR SWEEP
 // Pings all nodes in the Star Chart. Dead/Error nodes will be purged.
 
@@ -28,7 +28,8 @@ try {
         $curl_array[$i] = curl_init($ping_url);
         curl_setopt($curl_array[$i], CURLOPT_RETURNTRANSFER, true);
         curl_setopt($curl_array[$i], CURLOPT_TIMEOUT, 5); // 5 seconds max
-        curl_setopt($curl_array[$i], CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($curl_array[$i], CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($curl_array[$i], CURLOPT_SSL_VERIFYHOST, 2);
         curl_multi_add_handle($mh, $curl_array[$i]);
     }
 
