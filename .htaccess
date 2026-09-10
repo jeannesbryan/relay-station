@@ -38,16 +38,23 @@
 </FilesMatch>
 
 # --------------------------------------------------------------------------
-# 3. Deny the deployment-local directory
+# 3. Protect the deployment-local directory
 # --------------------------------------------------------------------------
-# khusus/ holds installer, registration and migration scripts. They are meant
-# to be run by the operator, not reached over the web.
+# khusus/ holds the installer, the registration API and the migration scripts.
+# They are meant to be run by the operator, not reached over the web.
+#
+# This deliberately does NOT deny the whole directory: khusus/index.html is the
+# public landing page and must stay reachable. Blocking the directory outright
+# would have served a 403 for the project's own front door. Only the executable
+# and data files are denied.
+#
+# These files also carry their own guards now (the installer refuses to run
+# twice; node removal needs an admin token), so this rule is defence in depth
+# rather than the only thing standing in the way.
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteRule ^khusus/ - [F,L]
-</IfModule>
-<IfModule mod_alias.c>
-    RedirectMatch 404 ^/.*/khusus/
+    RewriteRule ^khusus/data/ - [F,L]
+    RewriteRule ^khusus/.*\.(php|sql|sqlite|sqlite-wal|sqlite-shm|zip|log|bak)$ - [F,L]
 </IfModule>
 
 # --------------------------------------------------------------------------
