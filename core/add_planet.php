@@ -1,15 +1,15 @@
 <?php
 require_once 'ssl_shield.php';
+require_once __DIR__ . '/security.php';
 // ==========================================
 // 🚀 RELAY STATION: STAR CHART UPDATER (V7.2)
 // Equipped with The Symmetric Key Exchange Protocol
 // ==========================================
 
-session_start();
+relay_relay_session_start();
 
-if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
-    die("UNAUTHORIZED_ACCESS");
-}
+// Only the Commander may reach this endpoint.
+relay_require_auth(false);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // [ V7.1 ] Advanced Sanitization

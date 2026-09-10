@@ -1,5 +1,6 @@
 <?php
 require_once 'core/ssl_shield.php';
+require_once 'core/security.php';
 // ==========================================
 // 📡 RELAY STATION: ATMOSPHERIC SHIELD & INBOX (v7.3)
 // Endpoint to receive incoming signals (POST) from foreign nodes. 

@@ -1,14 +1,13 @@
 <?php
 require_once 'ssl_shield.php';
+require_once __DIR__ . '/security.php';
 // RELAY STATION: OVER-THE-AIR (OTA) UPDATER ENGINE
 // Menarik rilis terbaru dari pusat komando dan menambal sistem secara otomatis.
 
-session_start();
+relay_relay_session_start();
 
-// Keamanan Lapis Baja: Hanya Kapten yang boleh memicu pembaruan
-if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
-    die("[ FATAL ERROR ] Akses Ditolak.");
-}
+// Only the Commander may reach this endpoint.
+relay_require_auth(false);
 
 // 1. Konfigurasi Pusat Komando & Deteksi Versi Lokal
 $remote_beacon_url = 'https://raw.githubusercontent.com/jeannesbryan/relay-station/main/version.json?t=' . time();

@@ -1,16 +1,18 @@
 <?php
 require_once 'core/ssl_shield.php';
+require_once 'core/security.php';
 // ==========================================
 // 📌 RELAY STATION: THE MEMORY VAULT (BOOKMARKS)
 // V7.2 - Displays saved transmissions using INNER JOIN.
 // Automatically purges if the original transmission is deleted.
 // ==========================================
 
-session_start();
+relay_session_start();
 date_default_timezone_set('UTC'); 
 
-if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
-    header("Location: console.php");
+// Unauthenticated visitors are sent to the login console.
+if (!relay_is_authenticated()) {
+    header('Location: console.php');
     exit;
 }
 

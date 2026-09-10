@@ -1,15 +1,16 @@
 <?php
 require_once 'ssl_shield.php';
+require_once __DIR__ . '/security.php';
 // ==========================================
 // 🔔 RELAY STATION: ALERT HANDLER (V7.2)
 // Clears radar notifications. For "Follow Back" actions, 
 // the Symmetric Key Exchange is handled safely by add_planet.php.
 // ==========================================
 
-session_start();
-if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) { 
-    die("[ UNAUTHORIZED ] Access Denied."); 
-}
+relay_relay_session_start();
+
+// Only the Commander may reach this endpoint.
+relay_require_auth(false);
 
 if (isset($_GET['id'])) {
     $id = (int) filter_var($_GET['id'], FILTER_SANITIZE_NUMBER_INT);

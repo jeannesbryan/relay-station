@@ -1,9 +1,10 @@
 <?php
 require_once 'core/ssl_shield.php';
+require_once 'core/security.php';
 // ==========================================
 // 🔒 [ SECURITY OVERRIDE: ENCRYPTED SESSION ]
 // ==========================================
-session_start();
+relay_session_start();
 date_default_timezone_set('UTC'); 
 
 // ==========================================

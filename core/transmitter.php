@@ -1,5 +1,6 @@
 <?php
 require_once 'ssl_shield.php';
+require_once __DIR__ . '/security.php';
 // ==========================================================
 // 🚀 RELAY STATION: TRANSMITTER ENGINE (V7.3)
 // Handles Public, Direct, Ghost Protocol, Media, Sonar Pulse, ACKs, 
@@ -8,6 +9,17 @@ require_once 'ssl_shield.php';
 // ==========================================================
 
 date_default_timezone_set('UTC'); // Enforce UTC to prevent Ghost Protocol timing issues
+
+// ---------------------------------------------------------------------------
+// PRIVILEGED LOCAL ENDPOINT - AUTHENTICATION REQUIRED
+// ---------------------------------------------------------------------------
+// This endpoint has no other caller than the authenticated console pages. It
+// writes rows to `transmissions`, writes caller-supplied bytes into media/,
+// and opens outbound connections to a caller-supplied host. v7.3 exposed all
+// three to anyone who could reach the URL: no session_start(), no auth check,
+// nothing. Anonymous POST is now rejected before any input is read.
+relay_session_start();
+relay_require_auth(false);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     

@@ -1,12 +1,13 @@
 <?php
 require_once 'ssl_shield.php';
+require_once __DIR__ . '/security.php';
 // RELAY STATION: DEEP SPACE RADAR SWEEP
 // Pings all nodes in the Star Chart. Dead/Error nodes will be purged.
 
-session_start();
-if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
-    die("UNAUTHORIZED");
-}
+relay_relay_session_start();
+
+// Only the Commander may reach this endpoint.
+relay_require_auth(false);
 
 // 🚀 [ INJECT CORE MEMORY ENGINE (WAL MODE) ]
 require_once 'db_connect.php';

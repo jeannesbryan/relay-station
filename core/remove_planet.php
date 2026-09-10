@@ -1,14 +1,13 @@
 <?php
 require_once 'ssl_shield.php';
+require_once __DIR__ . '/security.php';
 // RELAY STATION: DISCONNECT PROTOCOL
 // Manually remove a planet's coordinates from the radar (Unfollow)
 
-session_start();
+relay_relay_session_start();
 
-// Security: Only the Commander can disconnect nodes
-if (!isset($_SESSION['relay_auth']) || $_SESSION['relay_auth'] !== true) {
-    die("UNAUTHORIZED_ACCESS");
-}
+// Only the Commander may reach this endpoint.
+relay_require_auth(false);
 
 if (isset($_GET['id'])) {
     $id = (int)$_GET['id'];
