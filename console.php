@@ -561,7 +561,7 @@ try {
         // is a TypeError (fatal) on PHP 8, so an unreachable or invalid hub URL
         // would have taken the whole request down instead of being skipped.
         if ($ping_data !== '') {
-            $ch = relay_node_curl('https://relay.emptyhub.my.id/api_register.php');
+            $ch = relay_node_curl('https://emptyhub.my.id/api_register.php');
             if ($ch) {
                 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                 curl_setopt($ch, CURLOPT_POST, true);
@@ -1524,7 +1524,7 @@ try {
                 const planetUrlStr = window.location.origin + window.location.pathname.replace('/console.php', '');
                 const stationNameStr = "<?php echo addslashes($station_name); ?>";
                 const stationBioStr = "<?php echo addslashes($station_bio); ?>";
-                fetch('https://relay.emptyhub.my.id/api_register.php', {
+                fetch('https://emptyhub.my.id/api_register.php', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: 'ping', planet_url: planetUrlStr, station_name: stationNameStr, station_bio: stationBioStr })
                 }).catch(e => {}); 
