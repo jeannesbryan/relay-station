@@ -158,13 +158,20 @@ try {
                         </div>
                     <?php else: ?>
                         <?php foreach ($bookmarked_transmissions as $msg): 
-                            // NOTE: $is_me is the older local-vs-remote label and is
-                            // deliberately left as-is so bookmark labelling does not change.
-                            $is_me = ($msg['is_remote'] == 0);
+                            // [ V8.0.2 ] Source labels now mirror the Timeline exactly.
+                            // The query is SELECT t.*, so is_relay is available here. A post I
+                            // merely relayed used to be labelled LOCAL_AUTHOR in the Vault while
+                            // the Timeline labelled the same post [ 🔁 RELAYED_BY_ME ] - the
+                            // Vault was crediting me with authorship of somebody else's signal.
+                            $is_relay_flag = (int)($msg['is_relay'] ?? 0);
+                            $is_own_post   = ($msg['is_remote'] == 0 && $is_relay_flag === 0);
+                            $is_my_relay   = ($msg['is_remote'] == 0 && $is_relay_flag === 1);
 
-                            // [ V8.0.2 ] Precise "authored by me": a post I merely relayed
-                            // is still somebody else's content, so it keeps its ROGER THAT.
-                            $is_own_post = ($msg['is_remote'] == 0 && (int)($msg['is_relay'] ?? 0) === 0);
+                            $src_label = '';
+                            if ($is_own_post) { $src_label = 'LOCAL_AUTHOR:'; }
+                            elseif ($is_my_relay) { $src_label = '<span class="text-warning">[ 🔁 RELAYED_BY_ME ]</span>'; }
+                            elseif ($is_relay_flag == 1) { $src_label = '<span class="text-warning">[ 🔁 RELAYED ]</span> INCOMING FROM:'; }
+                            else { $src_label = 'INCOMING FROM:'; }
                             $author_disp = htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN');
 
                             $stmt_res_count = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ?");
@@ -188,7 +195,7 @@ try {
                                 <div class="t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap gap-2">
                                     <span>
                                         [ <?php echo date('Y-m-d H:i', strtotime($msg['bookmarked_at'])); ?> SAVED ] 
-                                        <?php echo $is_me ? 'LOCAL_AUTHOR:' : 'INCOMING FROM:'; ?> 
+                                        <?php echo $src_label; ?> 
                                         <strong class="text-success"><?php echo $author_disp; ?></strong>
                                         <?php if(!empty($msg['expiry_date'])) echo '<span class="t-badge danger t-flicker ml-2">[ 👻 GHOSTED ]</span>'; ?>
                                     </span>
