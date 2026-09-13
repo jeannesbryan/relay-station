@@ -702,6 +702,15 @@ try {
             $roger_btn_class = $has_roger ? 'success' : '';
             $book_btn_text = $is_saved ? '[ 📌 SAVED ]' : '[ 📌 BOOKMARK ]';
             $book_btn_class = $is_saved ? 'warning' : '';
+
+            // 🚫 [ V8.0.2 ] NO SELF-RESONANCE
+            // Acknowledging your own transmission means nothing, so the button is not
+            // rendered for local posts at all. ROGER_COUNT stays on screen: other
+            // stations may legitimately have acknowledged it.
+            $roger_btn_html = '';
+            if (!$is_me) {
+                $roger_btn_html = "<button type='button' onclick=\"toggleRogerThat(this, {$msg['id']}, '{$target_planet_url}')\" class='t-btn t-btn-sm {$roger_btn_class}' style='padding: 2px 6px; font-size: 10px;'>{$roger_btn_text}</button>";
+            }
             
             $img = '';
             if (!empty($msg['media_url'])) {
@@ -761,7 +770,7 @@ try {
                     <p class='m-0 timeline-msg' style='font-size: 14px;'>$content</p> $img
                     <div class='mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2' style='border-top: 1px dashed rgba(0,255,65,0.2);'>
                         <div class='d-flex gap-2'>
-                            <button type='button' onclick=\"toggleRogerThat(this, {$msg['id']}, '{$target_planet_url}')\" class='t-btn t-btn-sm {$roger_btn_class}' style='padding: 2px 6px; font-size: 10px;'>{$roger_btn_text}</button>
+                            {$roger_btn_html}
                             <button type='button' onclick=\"toggleBookmark(this, {$msg['id']})\" class='t-btn t-btn-sm {$book_btn_class}' style='padding: 2px 6px; font-size: 10px;'>{$book_btn_text}</button>
                             {$relay_button_html}
                         </div>
@@ -1114,7 +1123,9 @@ try {
 
                                 <div class='mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2' style='border-top: 1px dashed rgba(0,255,65,0.2);'>
                                     <div class='d-flex gap-2'>
+                                        <?php if (!$is_me): // [ V8.0.2 ] NO SELF-RESONANCE: no ROGER THAT on your own transmission ?>
                                         <button type='button' onclick="toggleRogerThat(this, <?php echo $msg['id']; ?>, '<?php echo htmlspecialchars($target_planet_url); ?>')" class='t-btn t-btn-sm <?php echo $roger_btn_class; ?>' style='padding: 2px 6px; font-size: 10px;'><?php echo $roger_btn_text; ?></button>
+                                        <?php endif; ?>
                                         <button type='button' onclick="toggleBookmark(this, <?php echo $msg['id']; ?>)" class='t-btn t-btn-sm <?php echo $book_btn_class; ?>' style='padding: 2px 6px; font-size: 10px;'><?php echo $book_btn_text; ?></button>
                                         <?php echo $relay_button_html; ?>
                                     </div>

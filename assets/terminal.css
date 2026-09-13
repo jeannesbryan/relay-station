@@ -112,6 +112,15 @@ body.t-crt::after {
 .p-0 { padding: 0 !important; } .p-1 { padding: 5px !important; } .p-2 { padding: 10px !important; } .p-3 { padding: 15px !important; } .p-4 { padding: 20px !important; }
 .py-1 { padding-top: 5px !important; padding-bottom: 5px !important; } .py-2 { padding-top: 10px !important; padding-bottom: 10px !important; } .py-3 { padding-top: 15px !important; padding-bottom: 15px !important; }
 .px-1 { padding-left: 5px !important; padding-right: 5px !important; } .px-2 { padding-left: 10px !important; padding-right: 10px !important; } .px-3 { padding-left: 15px !important; padding-right: 15px !important; }
+/* [ V8.0.2 ] padding-top / padding-bottom. These were referenced by the markup all
+   along (t-border-bottom pb-2, border-top + pt-2 on the card footers) but were
+   never defined here, so every one of them was a silent no-op and the buttons sat
+   1px from the dashed rules. Kept to values 1-5 to mirror the m-*/p-*/py-*/px-*
+   scales above. pt-0 / pb-0 are deliberately NOT declared: .t-container-fluid
+   carries padding: 20px, and the two places that ask for pt-0 are top-level
+   containers, so honouring it would shift the navbar on every page. */
+.pt-1 { padding-top: 5px !important; } .pt-2 { padding-top: 10px !important; } .pt-3 { padding-top: 15px !important; } .pt-4 { padding-top: 20px !important; } .pt-5 { padding-top: 30px !important; }
+.pb-1 { padding-bottom: 5px !important; } .pb-2 { padding-bottom: 10px !important; } .pb-3 { padding-bottom: 15px !important; } .pb-4 { padding-bottom: 20px !important; } .pb-5 { padding-bottom: 30px !important; }
 
 .t-border-bottom { border-bottom: 1px dashed var(--t-green-dim) !important; }
 .t-border-top { border-top: 1px dashed var(--t-green-dim) !important; }

@@ -158,7 +158,13 @@ try {
                         </div>
                     <?php else: ?>
                         <?php foreach ($bookmarked_transmissions as $msg): 
+                            // NOTE: $is_me is the older local-vs-remote label and is
+                            // deliberately left as-is so bookmark labelling does not change.
                             $is_me = ($msg['is_remote'] == 0);
+
+                            // [ V8.0.2 ] Precise "authored by me": a post I merely relayed
+                            // is still somebody else's content, so it keeps its ROGER THAT.
+                            $is_own_post = ($msg['is_remote'] == 0 && (int)($msg['is_relay'] ?? 0) === 0);
                             $author_disp = htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN');
 
                             $stmt_res_count = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ?");
@@ -223,7 +229,9 @@ try {
 
                                 <div class='mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2' style='border-top: 1px dashed rgba(255,255,0,0.2);'>
                                     <div class='d-flex gap-2'>
+                                        <?php if (!$is_own_post): // [ V8.0.2 ] NO SELF-RESONANCE ?>
                                         <button type='button' onclick="toggleRogerThat(this, <?php echo $msg['id']; ?>, '<?php echo htmlspecialchars($target_planet_url); ?>')" class='t-btn t-btn-sm <?php echo $roger_btn_class; ?>' style='padding: 2px 6px; font-size: 10px;'><?php echo $roger_btn_text; ?></button>
+                                        <?php endif; ?>
                                         <button type='button' onclick="removeBookmark(<?php echo $msg['id']; ?>)" class='t-btn t-btn-sm warning' style='padding: 2px 6px; font-size: 10px;'>[ 📌 SAVED (CLICK TO REMOVE) ]</button>
                                     </div>
                                     <span class='fs-small text-muted' style='font-size: 11px;'>ROGER_COUNT: <strong class='text-success'><?php echo $res_count; ?></strong></span>
