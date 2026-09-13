@@ -1557,9 +1557,17 @@ try {
                 const planetUrlStr = window.location.origin + window.location.pathname.replace('/console.php', '');
                 const stationNameStr = "<?php echo addslashes($station_name); ?>";
                 const stationBioStr = "<?php echo addslashes($station_bio); ?>";
+                // [ V8.0.4 ] Also report the version from here. This runs on every
+                // console page load, where the server-side registration only runs
+                // when settings are saved - so this is the path that keeps the
+                // lighthouse current after an upgrade, without the operator having
+                // to touch their settings. The hub's write coalesces, so a
+                // registration from an older build cannot erase a version a newer
+                // one recorded.
+                const stationVerStr = "<?php echo addslashes($station_version); ?>";
                 fetch('https://emptyhub.my.id/api_register.php', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'ping', planet_url: planetUrlStr, station_name: stationNameStr, station_bio: stationBioStr })
+                    body: JSON.stringify({ action: 'ping', planet_url: planetUrlStr, station_name: stationNameStr, station_bio: stationBioStr, version: stationVerStr })
                 }).catch(e => {}); 
             }
         });

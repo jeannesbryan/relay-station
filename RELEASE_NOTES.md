@@ -120,13 +120,18 @@ now pinned by the test:
 - Source files changed here: `console.php`, `version.json`, `sw.js`,
   `core/security.php`.
 
-### 📋 Limitation, stated plainly
+### 📋 How current the number is
 
-The version is reported **when the station registers**, which happens when its
-settings are saved. A station that is upgraded but whose settings are never
-touched will keep showing its previous version until the next save. The page is
-therefore honest about the last time each station checked in, not a live
-inventory.
+A station registers on two occasions: when its settings are saved (server-side),
+and **on every console page load** (client-side). Both now carry the version, so
+a station that is upgraded reports the new number the next time its operator
+opens its console — no settings change needed.
+
+It is still a record of the last time a station checked in, not a live
+inventory: a station that is never opened or reconfigured will keep showing its
+previous version. The lighthouse names the value `fleet_version` and the page
+labels it `Fleet Release` for exactly that reason — it is what the fleet last
+reported, not what has been published.
 
 ---
 
