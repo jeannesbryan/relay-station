@@ -1,8 +1,9 @@
 <?php
 require_once __DIR__ . '/security.php';
+require_once __DIR__ . '/outbox.php';
 require_once 'ssl_shield.php';
 // ==========================================================
-// 🚀 RELAY STATION: TRANSMITTER ENGINE (V7.3)
+// 🚀 RELAY STATION: TRANSMITTER ENGINE (V8.1)
 // Handles Public, Direct, Ghost Protocol, Media, Sonar Pulse, ACKs, 
 // Scorched Earth, Global Purge, SIGNAL RESONANCE, and THE RELAY PROTOCOL.
 // Equipped with Anti-Loop Shield, Chain Purge support, and WAF Bypass.
@@ -212,6 +213,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
 
+            // 🚫 [ V8.1 ] SELF-RESONANCE GUARD (SERVER SIDE)
+            // v8.0.2 stopped rendering the ROGER THAT button on your own
+            // transmissions, but the button was the only thing enforcing it:
+            // a direct POST with your own post id still wrote a resonance row
+            // against yourself. Hiding a control is not a rule.
+            //
+            // The rule is that an acknowledgement has to have somebody on the
+            // other end of it, so the target must be an incoming signal
+            // (is_remote = 1). That excludes your own transmissions and, for
+            // the same reason, your own relays: a relay row is local, has no
+            // remote author to notify, and its counter would never leave this
+            // node.
+            //
+            // relay_can_resonate() in core/render.php is the same predicate, so
+            // the button and the endpoint cannot disagree again.
+            $stmt_target = $db->prepare("SELECT is_remote FROM transmissions WHERE id = :pid");
+            $stmt_target->execute([':pid' => $post_id]);
+            $target_is_remote = $stmt_target->fetchColumn();
+
+            if ($target_is_remote === false) {
+                header('Content-Type: application/json');
+                echo json_encode(['status' => 'error', 'message' => '[ UNKNOWN SIGNAL ] That transmission is not in core memory.']);
+                exit;
+            }
+
+            if ((int) $target_is_remote !== 1) {
+                error_log('[RELAY][SECURITY] refused a self-resonance attempt on post ' . $post_id);
+                header('Content-Type: application/json');
+                echo json_encode(['status' => 'error', 'message' => '[ SELF-RESONANCE REFUSED ] You can only acknowledge an incoming signal.']);
+                exit;
+            }
+
             // Anti-Spam Check
             $stmt_check = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = :pid AND reactor_url = :my_url");
             $stmt_check->execute([':pid' => $post_id, ':my_url' => $my_planet_url]);
@@ -291,7 +324,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     curl_setopt($curl_array[$i], CURLOPT_HTTPHEADER, [
                         'Content-Type: application/json',
                         'Content-Length: ' . strlen($json_payload),
-                        'User-Agent: RelayStation-Transmitter/7.3' // [ V7.3 ] WAF Bypass Upgrade
+                        'User-Agent: RelayStation-Transmitter/8.1'
                     ]);
                     curl_setopt($curl_array[$i], CURLOPT_TIMEOUT, 5); 
                     curl_multi_add_handle($mh, $curl_array[$i]);
@@ -299,20 +332,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 $running = null;
                 do { curl_multi_exec($mh, $running); } while ($running);
-                
-                // [ V8.0.3 ] Only remove handles that were actually created.
+
+                // [ V8.0.3 ] Only touch handles that were actually created.
                 // relay_node_curl() returns null when the outbound guard refuses
                 // a URL - which happens whenever an ally is offline, because a
                 // host that does not resolve is rejected. Passing that null to
                 // curl_multi_remove_handle() is a TypeError, so a single offline
                 // ally used to turn a successful broadcast into a 500 after the
                 // signal had already gone out.
+                //
+                // [ V8.1 ] The same walk now records who never answered, so the
+                // delivery can be queued instead of lost. "Never answered" is
+                // precisely CURLINFO_HTTP_CODE === 0: a refused handle, a
+                // connection error, or a timeout. See the note on the enqueue
+                // below for why an ally that DID answer is never retried.
+                $undelivered = [];
+
                 foreach ($allies as $i => $ally) {
-                    if (!empty($curl_array[$i])) {
-                        curl_multi_remove_handle($mh, $curl_array[$i]);
+                    if (empty($curl_array[$i])) {
+                        $undelivered[] = $ally['planet_url'];
+                        continue;
                     }
+
+                    if ((int) curl_getinfo($curl_array[$i], CURLINFO_HTTP_CODE) === 0) {
+                        $undelivered[] = $ally['planet_url'];
+                    }
+
+                    curl_multi_remove_handle($mh, $curl_array[$i]);
                 }
                 curl_multi_close($mh);
+
+                // [ V8.1 ] Queue what never arrived...
+                //
+                // ...but ONLY when no HTTP response came back at all. An ally
+                // that answered - even with a 500 - is deliberately not queued.
+                // A broadcast carries no idempotency key: api_inbox.php's
+                // anti-loop shield compares origin_id, and a plain public post
+                // leaves that column NULL, so a retry after a post-insert
+                // failure would publish the operator's signal a second time on
+                // a peer's timeline. Losing one delivery is bad; silently
+                // double-posting is worse, and it cannot be undone from here.
+                // That is why the test above is `=== 0` and not `is not 2xx`.
+                //
+                // Only the durable visibilities are queued at all; the tactical
+                // pulses are excluded by relay_outbox_is_durable().
+                if (count($undelivered) > 0 && relay_outbox_is_durable($visibility)) {
+                    foreach ($undelivered as $dead_url) {
+                        relay_outbox_enqueue($db, $dead_url, $base_payload, $visibility);
+                    }
+                    error_log('[RELAY][OUTBOX] queued ' . count($undelivered)
+                        . ' undelivered ' . $visibility . ' delivery(ies) for the next sweep');
+                }
             }
 
         } elseif (in_array($visibility, ['direct', 'sonar_pulse', 'ack_receipt', 'scorched_earth', 'resonance'])) {
@@ -339,6 +409,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // at this point, so an unreachable target degrades to "not
                 // delivered" rather than a 500.
                 $ch = relay_node_curl($target_url);
+                $answered = false;
+
                 if ($ch) {
                     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                     curl_setopt($ch, CURLOPT_POST, true);
@@ -346,13 +418,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     curl_setopt($ch, CURLOPT_HTTPHEADER, [
                         'Content-Type: application/json',
                         'Content-Length: ' . strlen($json_payload),
-                        'User-Agent: RelayStation-Transmitter/8.0.3'
+                        'User-Agent: RelayStation-Transmitter/8.1'
                     ]);
                     curl_setopt($ch, CURLOPT_TIMEOUT, 5);
                     curl_exec($ch);
+
+                    // 0 means nothing came back at all: connection error or
+                    // timeout. Any other value is the peer talking to us.
+                    $answered = ((int) curl_getinfo($ch, CURLINFO_HTTP_CODE)) !== 0;
                     curl_close($ch);
                 } else {
                     error_log('[RELAY] laser link not delivered, target unreachable or refused by the outbound guard: ' . $target_url);
+                }
+
+                // [ V8.1 ] Same rule as the broadcast path: queue it only when
+                // the target never answered, and only for a durable signal type.
+                // A Direct message is the case this exists for - it is addressed
+                // to one person, so losing it means that person never learns it
+                // was sent at all.
+                if (!$answered && relay_outbox_is_durable($visibility)) {
+                    relay_outbox_enqueue($db, $target_clean, $base_payload, $visibility);
+                    error_log('[RELAY][OUTBOX] queued an undelivered ' . $visibility
+                        . ' delivery for the next sweep: ' . $target_clean);
                 }
             }
         }

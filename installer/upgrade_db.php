@@ -145,6 +145,27 @@ try {
         // Kolom sudah ada.
     }
 
+    // ==========================================
+    // 📮 [ V8.1 ] THE STORE-AND-FORWARD OUTBOX
+    // ==========================================
+    // Signals that could not be delivered used to be lost outright: one five
+    // second attempt, and a peer that was rebooting simply never received the
+    // message, with nothing shown to the operator. They are queued here now
+    // and retried on each Radar Sweep. CREATE TABLE IF NOT EXISTS, so this is
+    // safe to re-run and identical to the definition in installer/schema.sql.
+    $db_upgrade->exec("CREATE TABLE IF NOT EXISTS outbox (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        target_url TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        visibility TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_attempt DATETIME DEFAULT NULL,
+        next_attempt DATETIME DEFAULT NULL
+    )");
+
+    $db_upgrade->exec("CREATE INDEX IF NOT EXISTS idx_outbox_next_attempt ON outbox (next_attempt)");
+
 } catch (Exception $e) {
     // Fatal error jika SQLite terkunci atau rusak parah
     error_log("[ MIGRATION FATAL ERROR ] " . $e->getMessage());

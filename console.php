@@ -1,6 +1,7 @@
 <?php
 require_once 'core/security.php';
 require_once 'core/ssl_shield.php';
+require_once 'core/render.php';
 // ==========================================
 // 🔒 [ SECURITY OVERRIDE: ENCRYPTED SESSION ]
 // ==========================================
@@ -671,101 +672,53 @@ try {
         $transmissions = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($transmissions as $msg) {
-            $is_relay_flag = isset($msg['is_relay']) ? (int)$msg['is_relay'] : 0;
-            $is_me = ($msg['is_remote'] == 0 && $is_relay_flag == 0);
-            $is_my_relay = ($msg['is_remote'] == 0 && $is_relay_flag == 1);
-            $author_disp = htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN');
-
-            $src_label = '';
-            if ($is_me) { $src_label = 'LOCAL_AUTHOR:'; }
-            elseif ($is_my_relay) { $src_label = '<span class="text-warning">[ 🔁 RELAYED_BY_ME ]</span>'; }
-            elseif ($is_relay_flag == 1) { $src_label = '<span class="text-warning">[ 🔁 RELAYED ]</span> INCOMING FROM:'; }
-            else { $src_label = 'INCOMING FROM:'; }
+            // [ V8.1 ] Everything below that describes the row comes from
+            // core/render.php. This block used to carry its own copy of the
+            // source label, the media matrix and the ROGER THAT button, which
+            // is how the Timeline and the Vault drifted apart in v8.0.2 and how
+            // the target URL ended up unescaped in this path alone.
+            $kind = relay_signal_kind($msg);
+            $is_me = ($kind === 'local');
+            $is_my_relay = ($kind === 'my_relay');
+            $author_disp = relay_author_display($msg);
+            $src_label = relay_source_label($msg);
             
             $ghost = !empty($msg['expiry_date']) ? '<span class="t-badge danger t-flicker">[ 👻 GHOSTED ]</span>' : '';
             $content = nl2br(htmlspecialchars($msg['content']));
 
-            // ⚡ [ V7.2 ] Resonance & Bookmark Check
-            $stmt_res_count = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ?");
-            $stmt_res_count->execute([$msg['id']]);
-            $res_count = $stmt_res_count->fetchColumn();
-
-            $stmt_my_res = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ? AND reactor_url = ?");
-            $stmt_my_res->execute([$msg['id'], $current_local_url]);
-            $has_roger = $stmt_my_res->fetchColumn() > 0;
+            // [ V8.1 ] Resonance counts, bookmark state and the acknowledge
+            // target all come from core/render.php now.
+            $res_stats = relay_resonance_stats($db, $msg['id'], $current_local_url);
+            $res_count = $res_stats['count'];
 
             $stmt_book = $db->prepare("SELECT COUNT(*) FROM bookmarks WHERE transmission_id = ?");
             $stmt_book->execute([$msg['id']]);
             $is_saved = $stmt_book->fetchColumn() > 0;
 
-            $target_planet_url = '';
-            if ($msg['is_remote'] == 1) {
-                $parts = explode('@', $msg['author_alias']);
-                if (count($parts) > 1) {
-                    $target_planet_url = 'https://' . end($parts);
-                }
-            }
-
-            $roger_btn_text = $has_roger ? '[ ✓ ACKNOWLEDGED ]' : '[ 📻 ROGER THAT ]';
-            $roger_btn_class = $has_roger ? 'success' : '';
+            $target_planet_url = relay_target_planet_url($msg);
             $book_btn_text = $is_saved ? '[ 📌 SAVED ]' : '[ 📌 BOOKMARK ]';
             $book_btn_class = $is_saved ? 'warning' : '';
 
-            // 🚫 [ V8.0.2 ] NO SELF-RESONANCE
-            // Acknowledging your own transmission means nothing, so the button is not
-            // rendered for local posts at all. ROGER_COUNT stays on screen: other
-            // stations may legitimately have acknowledged it.
-            $roger_btn_html = '';
-            if (!$is_me) {
-                $roger_btn_html = "<button type='button' onclick=\"toggleRogerThat(this, {$msg['id']}, '{$target_planet_url}')\" class='t-btn t-btn-sm {$roger_btn_class}' style='padding: 2px 6px; font-size: 10px;'>{$roger_btn_text}</button>";
-            }
+            // [ V8.1 ] The button comes from core/render.php, which decides for
+            // itself whether acknowledging is meaningful - an incoming signal
+            // only - and puts the target URL into a data attribute rather than
+            // an inline JS string literal. v8.0.2 enforced the rule by hiding
+            // the button here, which left the endpoint itself wide open.
+            $roger_btn_html = relay_roger_button($msg, $res_stats, $target_planet_url);
             
-            $img = '';
-            if (!empty($msg['media_url'])) {
-                $media_items = [];
-                if (strpos($msg['media_url'], '[') === 0) { $media_items = json_decode($msg['media_url'], true) ?? []; } 
-                else { $media_items = [$msg['media_url']]; }
-                
-                $m_count = count($media_items);
-                if ($m_count > 0) {
-                    $matrix_class = 'media-matrix-' . min($m_count, 4);
-                    $img = '<div class="media-matrix ' . $matrix_class . '">';
-                    foreach(array_slice($media_items, 0, 4) as $url) {
-                        $ext = strtolower(pathinfo($url, PATHINFO_EXTENSION));
-                        $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a']);
-                        $is_video = in_array($ext, ['mp4']);
-                        
-                        if ($is_audio) { $img .= '<div class="matrix-item audio-cell p-2"><button type="button" class="t-btn warning w-100 audio-play-btn" data-src="'.htmlspecialchars($url).'" style="font-size: 11px;">[ ▶️ PLAY AUDIO_LOG ]</button></div>'; } 
-                        elseif ($is_video) { $img .= '<div class="matrix-item"><video class="matrix-video" controls preload="metadata"><source src="'.htmlspecialchars($url).'" type="video/mp4"></video></div>'; } 
-                        else { $img .= '<div class="matrix-item"><img src="'.htmlspecialchars($url).'" class="matrix-img" alt="Secure Media"></div>'; }
-                    }
-                    $img .= '</div>';
-                }
-            }
+            // [ V8.1 ] Shared media matrix, so the Timeline, the Vault and the
+            // landing page render attachments identically.
+            $img = relay_media_matrix($msg['media_url'] ?? null, 'Secure Media');
             
             $purge_btn = '';
             if ($is_me || $is_my_relay) {
                 $purge_btn = "<button type='button' onclick='globalPurge(this, {$msg['id']})' class='t-btn danger t-btn-sm font-bold' style='padding: 1px 5px; font-size: 9px; line-height: 1;' title='Wipe Local & Allies Timeline'>[ 🔥 PURGE ]</button>";
             }
 
-            // 🔁 [ V7.3 ] RELAY BUTTON LOGIC
-            $relay_button_html = '';
-            $can_relay = ($msg['is_remote'] == 1);
-            if ($can_relay) {
-                $orig_raw_id = $msg['origin_id'] ?? '';
-                $global_origin_id = $orig_raw_id !== '' ? $orig_raw_id : hash('sha256', $msg['author_alias'] . $msg['content']);
-                
-                $stmt_check_relay = $db->prepare("SELECT id FROM transmissions WHERE is_remote = 0 AND is_relay = 1 AND origin_id = ?");
-                $stmt_check_relay->execute([$global_origin_id]);
-                $relay_id = $stmt_check_relay->fetchColumn();
-                $has_relayed = $relay_id > 0;
-
-                $relay_btn_text = $has_relayed ? '[ 🗑️ UNRELAY ]' : '[ 🔁 RELAY ]';
-                $relay_btn_class = $has_relayed ? 'danger' : 'warning';
-                $relay_onclick = $has_relayed ? "unrelayPost(this, {$relay_id}, {$msg['id']}, '{$global_origin_id}')" : "relayPost(this, {$msg['id']}, '{$global_origin_id}')";
-                
-                $relay_button_html = "<button type='button' id='relay-btn-{$msg['id']}' onclick=\"{$relay_onclick}\" class='t-btn t-btn-sm {$relay_btn_class}' style='padding: 2px 6px; font-size: 10px;'>{$relay_btn_text}</button>";
-            }
+            // [ V8.1 ] Shared relay button (core/render.php), so the origin DNA
+            // hash cannot be computed one way in this path and another way in
+            // the template path below.
+            $relay_button_html = relay_relay_button($db, $msg);
 
             echo "<div class='t-card mb-3 p-3 transmission-card' data-id='{$msg['id']}' data-raw-content='".htmlspecialchars($msg['content'], ENT_QUOTES)."'>
                     <div class='t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap gap-2'>
@@ -1028,40 +981,24 @@ try {
                         <div class="text-center text-muted py-4 t-border border-dashed">[ TIMELINE IS EMPTY ]</div>
                     <?php else: ?>
                         <?php foreach ($transmissions as $msg): 
-                            $is_relay_flag = isset($msg['is_relay']) ? (int)$msg['is_relay'] : 0;
-                            $is_me = ($msg['is_remote'] == 0 && $is_relay_flag == 0);
-                            $is_my_relay = ($msg['is_remote'] == 0 && $is_relay_flag == 1);
-                            $author_disp = htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN');
-
-                            $src_label = '';
-                            if ($is_me) { $src_label = 'LOCAL_AUTHOR:'; }
-                            elseif ($is_my_relay) { $src_label = '<span class="text-warning">[ 🔁 RELAYED_BY_ME ]</span>'; }
-                            elseif ($is_relay_flag == 1) { $src_label = '<span class="text-warning">[ 🔁 RELAYED ]</span> INCOMING FROM:'; }
-                            else { $src_label = 'INCOMING FROM:'; }
+                            // [ V8.1 ] All row-derived markup comes from
+                            // core/render.php. See the note on the AJAX path above.
+                            $kind = relay_signal_kind($msg);
+                            $is_me = ($kind === 'local');
+                            $is_my_relay = ($kind === 'my_relay');
+                            $author_disp = relay_author_display($msg);
+                            $src_label = relay_source_label($msg);
                             
-                            // ⚡ [ V7.2 ] Resonance & Bookmark Check
-                            $stmt_res_count = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ?");
-                            $stmt_res_count->execute([$msg['id']]);
-                            $res_count = $stmt_res_count->fetchColumn();
-
-                            $stmt_my_res = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ? AND reactor_url = ?");
-                            $stmt_my_res->execute([$msg['id'], $current_local_url]);
-                            $has_roger = $stmt_my_res->fetchColumn() > 0;
+                            // [ V8.1 ] Resonance counts, bookmark state and the
+                            // acknowledge target all come from core/render.php.
+                            $res_stats = relay_resonance_stats($db, $msg['id'], $current_local_url);
+                            $res_count = $res_stats['count'];
 
                             $stmt_book = $db->prepare("SELECT COUNT(*) FROM bookmarks WHERE transmission_id = ?");
                             $stmt_book->execute([$msg['id']]);
                             $is_saved = $stmt_book->fetchColumn() > 0;
 
-                            $target_planet_url = '';
-                            if ($msg['is_remote'] == 1) {
-                                $parts = explode('@', $msg['author_alias']);
-                                if (count($parts) > 1) {
-                                    $target_planet_url = 'https://' . end($parts);
-                                }
-                            }
-
-                            $roger_btn_text = $has_roger ? '[ ✓ ACKNOWLEDGED ]' : '[ 📻 ROGER THAT ]';
-                            $roger_btn_class = $has_roger ? 'success' : '';
+                            $target_planet_url = relay_target_planet_url($msg);
                             $book_btn_text = $is_saved ? '[ 📌 SAVED ]' : '[ 📌 BOOKMARK ]';
                             $book_btn_class = $is_saved ? 'warning' : '';
                             
@@ -1070,24 +1007,8 @@ try {
                                 $purge_btn = "<button type='button' onclick='globalPurge(this, {$msg['id']})' class='t-btn danger t-btn-sm font-bold' style='padding: 1px 5px; font-size: 9px; line-height: 1;' title='Wipe Local & Allies Timeline'>[ 🔥 PURGE ]</button>";
                             }
 
-                            // 🔁 [ V7.3 ] RELAY BUTTON LOGIC
-                            $relay_button_html = '';
-                            $can_relay = ($msg['is_remote'] == 1);
-                            if ($can_relay) {
-                                $orig_raw_id = $msg['origin_id'] ?? '';
-                                $global_origin_id = $orig_raw_id !== '' ? $orig_raw_id : hash('sha256', $msg['author_alias'] . $msg['content']);
-                                
-                                $stmt_check_relay = $db->prepare("SELECT id FROM transmissions WHERE is_remote = 0 AND is_relay = 1 AND origin_id = ?");
-                                $stmt_check_relay->execute([$global_origin_id]);
-                                $relay_id = $stmt_check_relay->fetchColumn();
-                                $has_relayed = $relay_id > 0;
-
-                                $relay_btn_text = $has_relayed ? '[ 🗑️ UNRELAY ]' : '[ 🔁 RELAY ]';
-                                $relay_btn_class = $has_relayed ? 'danger' : 'warning';
-                                $relay_onclick = $has_relayed ? "unrelayPost(this, {$relay_id}, {$msg['id']}, '{$global_origin_id}')" : "relayPost(this, {$msg['id']}, '{$global_origin_id}')";
-                                
-                                $relay_button_html = "<button type='button' id='relay-btn-{$msg['id']}' onclick=\"{$relay_onclick}\" class='t-btn t-btn-sm {$relay_btn_class}' style='padding: 2px 6px; font-size: 10px;'>{$relay_btn_text}</button>";
-                            }
+                            // [ V8.1 ] Shared relay button (core/render.php).
+                            $relay_button_html = relay_relay_button($db, $msg);
                         ?>
                             <div class="t-card mb-3 p-3 transmission-card" data-id="<?php echo $msg['id']; ?>" data-raw-content="<?php echo htmlspecialchars($msg['content'], ENT_QUOTES); ?>">
                                 <div class="t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap gap-2">
@@ -1106,38 +1027,11 @@ try {
                                     <?php echo nl2br(htmlspecialchars($msg['content'])); ?>
                                 </p>
                                 
-                                <?php if(!empty($msg['media_url'])): 
-                                    $media_items = [];
-                                    if (strpos($msg['media_url'], '[') === 0) { $media_items = json_decode($msg['media_url'], true) ?? []; } 
-                                    else { $media_items = [$msg['media_url']]; }
-                                    
-                                    $m_count = count($media_items);
-                                    if ($m_count > 0):
-                                ?>
-                                    <div class="media-matrix media-matrix-<?php echo min($m_count, 4); ?>">
-                                        <?php foreach(array_slice($media_items, 0, 4) as $url): 
-                                            $ext = strtolower(pathinfo($url, PATHINFO_EXTENSION));
-                                            $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a']);
-                                            $is_video = in_array($ext, ['mp4']);
-                                        ?>
-                                            <?php if($is_audio): ?>
-                                                <div class="matrix-item audio-cell p-2">
-                                                    <button type="button" class="t-btn warning w-100 audio-play-btn" data-src="<?php echo htmlspecialchars($url); ?>" style="font-size: 11px;">[ ▶️ PLAY AUDIO_LOG ]</button>
-                                                </div>
-                                            <?php elseif($is_video): ?>
-                                                <div class="matrix-item"><video class="matrix-video" controls preload="metadata"><source src="<?php echo htmlspecialchars($url); ?>" type="video/mp4"></video></div>
-                                            <?php else: ?>
-                                                <div class="matrix-item"><img src="<?php echo htmlspecialchars($url); ?>" class="matrix-img" alt="Transmission Media"></div>
-                                            <?php endif; ?>
-                                        <?php endforeach; ?>
-                                    </div>
-                                <?php endif; endif; ?>
+                                <?php echo relay_media_matrix($msg['media_url'] ?? null, 'Transmission Media'); ?>
 
                                 <div class='mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2' style='border-top: 1px dashed rgba(0,255,65,0.2);'>
                                     <div class='d-flex gap-2'>
-                                        <?php if (!$is_me): // [ V8.0.2 ] NO SELF-RESONANCE: no ROGER THAT on your own transmission ?>
-                                        <button type='button' onclick="toggleRogerThat(this, <?php echo $msg['id']; ?>, '<?php echo htmlspecialchars($target_planet_url); ?>')" class='t-btn t-btn-sm <?php echo $roger_btn_class; ?>' style='padding: 2px 6px; font-size: 10px;'><?php echo $roger_btn_text; ?></button>
-                                        <?php endif; ?>
+                                        <?php echo relay_roger_button($msg, $res_stats, $target_planet_url); ?>
                                         <button type='button' onclick="toggleBookmark(this, <?php echo $msg['id']; ?>)" class='t-btn t-btn-sm <?php echo $book_btn_class; ?>' style='padding: 2px 6px; font-size: 10px;'><?php echo $book_btn_text; ?></button>
                                         <?php echo $relay_button_html; ?>
                                     </div>
@@ -1382,8 +1276,14 @@ try {
         // ==========================================
         // ⚡ [ V7.2 & V7.3 ] THE SOCIAL SIGNAL ENGINE
         // ==========================================
-        async function toggleRogerThat(btn, id, target) {
-            if (btn.classList.contains('success')) return; 
+        // [ V8.1 ] The signal id and target come from data attributes instead of
+        // arguments interpolated into an onclick string. The target is derived
+        // from a remote node's alias, and quoting that into inline JavaScript is
+        // what made the attribute escapable in the first place.
+        async function toggleRogerThat(btn) {
+            if (btn.classList.contains('success')) return;
+            const id = btn.dataset.rogerId;
+            const target = btn.dataset.rogerTarget || '';
             btn.innerText = '[ TRANSMITTING... ]'; btn.disabled = true;
             const fd = new FormData(); fd.append('visibility', 'resonance'); fd.append('post_id', id); fd.append('target_planet', target); fd.append('content', 'roger');
             try {

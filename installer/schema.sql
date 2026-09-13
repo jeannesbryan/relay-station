@@ -131,3 +131,27 @@ CREATE TABLE IF NOT EXISTS signal_resonance (
     reacted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(post_id, reactor_url)
 );
+-- ==========================================================
+-- 📮 10. [ V8.1 ] THE STORE-AND-FORWARD OUTBOX
+-- ==========================================================
+-- Deliveries that failed for a reason time can fix. Written by
+-- core/transmitter.php when an ally cannot be reached, drained by
+-- core/radar_sweep.php on the next sweep, and expires on its own so an
+-- unreachable peer cannot fill the disk.
+--
+-- payload holds the JSON capsule WITHOUT handshake_token: the token is read
+-- from `following` at send time, so rotating a token does not strand
+-- everything that was queued before the rotation.
+CREATE TABLE IF NOT EXISTS outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    target_url TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    visibility TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_attempt DATETIME DEFAULT NULL,
+    next_attempt DATETIME DEFAULT NULL
+);
+
+-- The flush selects on this predicate every sweep.
+CREATE INDEX IF NOT EXISTS idx_outbox_next_attempt ON outbox (next_attempt);

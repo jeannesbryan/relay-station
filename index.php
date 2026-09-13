@@ -1,6 +1,7 @@
 <?php
 require_once 'core/security.php';
 require_once 'core/ssl_shield.php';
+require_once 'core/render.php';
 // ==========================================
 // 📡 RELAY STATION: PUBLIC HOLOGRAM (SOVEREIGN PROFILE)
 // The station's interface for public visitors. 
@@ -48,52 +49,19 @@ try {
         $transmissions = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($transmissions as $msg) {
-            $author = htmlspecialchars($msg['author_alias'] ?? 'LOCAL_COMMAND');
-            
-            $is_relay_flag = isset($msg['is_relay']) ? (int)$msg['is_relay'] : 0;
-            $is_me = ($msg['is_remote'] == 0 && $is_relay_flag == 0);
-            $is_my_relay = ($msg['is_remote'] == 0 && $is_relay_flag == 1);
-            
-            $src_label = '';
-            if ($is_me) { $src_label = 'LOCAL_TRANSMISSION:'; }
-            elseif ($is_my_relay) { $src_label = '<span class="text-warning">[ 🔁 RELAYED_BY_ME ]</span> FROM:'; }
+            // [ V8.1 ] Labels, counts and media come from core/render.php.
+            // This page used to say LOCAL_TRANSMISSION: and "FROM:" where every
+            // other screen said LOCAL_AUTHOR: and INCOMING FROM: - two
+            // vocabularies for one concept, which is the drift the shared layer
+            // exists to stop.
+            $author = relay_author_display($msg, 'LOCAL_COMMAND');
+            $src_label = relay_source_label($msg);
 
             $img = '';
-            
-            // ⚡ [ V7.2 ] Hitung jumlah Roger That untuk AJAX Loader
-            $stmt_res_count = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ?");
-            $stmt_res_count->execute([$msg['id']]);
-            $res_count = $stmt_res_count->fetchColumn();
+            $res_count = relay_resonance_stats($db, $msg['id'], $current_local_url)['count'];
 
-            // 🗄️ V5.5 ADVANCED MEDIA MATRIX RENDERER (AJAX)
-            if (!empty($msg['media_url'])) {
-                $media_items = [];
-                if (strpos($msg['media_url'], '[') === 0) {
-                    $media_items = json_decode($msg['media_url'], true) ?? [];
-                } else {
-                    $media_items = [$msg['media_url']];
-                }
-                
-                $m_count = count($media_items);
-                if ($m_count > 0) {
-                    $matrix_class = 'media-matrix-' . min($m_count, 4);
-                    $img = '<div class="media-matrix ' . $matrix_class . '">';
-                    foreach(array_slice($media_items, 0, 4) as $url) {
-                        $ext = strtolower(pathinfo($url, PATHINFO_EXTENSION));
-                        $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a']);
-                        $is_video = in_array($ext, ['mp4']);
-                        
-                        if ($is_audio) {
-                            $img .= '<div class="matrix-item audio-cell p-2"><button type="button" class="t-btn warning w-100 audio-play-btn" data-src="'.htmlspecialchars($url).'" style="font-size: 11px;">[ ▶️ PLAY AUDIO_LOG ]</button></div>';
-                        } elseif ($is_video) {
-                            $img .= '<div class="matrix-item"><video class="matrix-video" controls preload="metadata"><source src="'.htmlspecialchars($url).'" type="video/mp4"></video></div>';
-                        } else {
-                            $img .= '<div class="matrix-item"><img src="'.htmlspecialchars($url).'" class="matrix-img" alt="Secure Media"></div>';
-                        }
-                    }
-                    $img .= '</div>';
-                }
-            }
+            // 🗄️ [ V8.1 ] Shared media matrix (core/render.php).
+            $img = relay_media_matrix($msg['media_url'] ?? null, 'Secure Media');
             
             echo "<div class='t-card mb-3 p-3 transmission-card' data-id='{$msg['id']}'>
                     <div class='t-bubble-meta t-border-bottom pb-2 mb-2'>
@@ -185,20 +153,10 @@ try {
                         <?php else: ?>
                             <?php foreach ($transmissions as $msg): ?>
                                 <?php
-                                    $author = htmlspecialchars($msg['author_alias'] ?? 'LOCAL_COMMAND');
-                                    
-                                    $is_relay_flag = isset($msg['is_relay']) ? (int)$msg['is_relay'] : 0;
-                                    $is_me = ($msg['is_remote'] == 0 && $is_relay_flag == 0);
-                                    $is_my_relay = ($msg['is_remote'] == 0 && $is_relay_flag == 1);
-                                    
-                                    $src_label = '';
-                                    if ($is_me) { $src_label = 'LOCAL_TRANSMISSION:'; }
-                                    elseif ($is_my_relay) { $src_label = '<span class="text-warning">[ 🔁 RELAYED_BY_ME ]</span> FROM:'; }
-
-                                    // ⚡ [ V7.2 ] Hitung jumlah Roger That untuk Load Awal
-                                    $stmt_res_count = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ?");
-                                    $stmt_res_count->execute([$msg['id']]);
-                                    $res_count = $stmt_res_count->fetchColumn();
+                                    // [ V8.1 ] Shared render layer (core/render.php).
+                                    $author = relay_author_display($msg, 'LOCAL_COMMAND');
+                                    $src_label = relay_source_label($msg);
+                                    $res_count = relay_resonance_stats($db, $msg['id'], $current_local_url)['count'];
                                 ?>
                                 <div class="t-card mb-3 p-3 transmission-card" data-id="<?php echo $msg['id']; ?>">
                                     <div class="t-bubble-meta t-border-bottom pb-2 mb-2">
@@ -211,43 +169,7 @@ try {
                                         <?php echo nl2br(htmlspecialchars($msg['content'])); ?>
                                     </p>
                                     
-                                    <?php if(!empty($msg['media_url'])): 
-                                        $media_items = [];
-                                        if (strpos($msg['media_url'], '[') === 0) {
-                                            $media_items = json_decode($msg['media_url'], true) ?? [];
-                                        } else {
-                                            $media_items = [$msg['media_url']];
-                                        }
-                                        
-                                        $m_count = count($media_items);
-                                        if ($m_count > 0):
-                                    ?>
-                                        <div class="media-matrix media-matrix-<?php echo min($m_count, 4); ?>">
-                                            <?php foreach(array_slice($media_items, 0, 4) as $url): 
-                                                $ext = strtolower(pathinfo($url, PATHINFO_EXTENSION));
-                                                $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a']);
-                                                $is_video = in_array($ext, ['mp4']);
-                                            ?>
-                                                <?php if($is_audio): ?>
-                                                    <div class="matrix-item audio-cell p-2">
-                                                        <button type="button" class="t-btn warning w-100 audio-play-btn" data-src="<?php echo htmlspecialchars($url); ?>" style="font-size: 11px;">
-                                                            [ ▶️ PLAY AUDIO_LOG ]
-                                                        </button>
-                                                    </div>
-                                                <?php elseif($is_video): ?>
-                                                    <div class="matrix-item">
-                                                        <video class="matrix-video" controls preload="metadata">
-                                                            <source src="<?php echo htmlspecialchars($url); ?>" type="video/mp4">
-                                                        </video>
-                                                    </div>
-                                                <?php else: ?>
-                                                    <div class="matrix-item">
-                                                        <img src="<?php echo htmlspecialchars($url); ?>" class="matrix-img" alt="Transmission Media">
-                                                    </div>
-                                                <?php endif; ?>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    <?php endif; endif; ?>
+                                    <?php echo relay_media_matrix($msg['media_url'] ?? null, 'Transmission Media'); ?>
 
                                     <div class='mt-3 pt-2 text-right' style='border-top: 1px dashed rgba(0,255,65,0.2);'>
                                         <span class='fs-small text-muted' style='font-size: 11px;'>ROGER_COUNT: <strong class='text-success'><?php echo $res_count; ?></strong></span>

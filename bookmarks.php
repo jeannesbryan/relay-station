@@ -1,6 +1,7 @@
 <?php
 require_once 'core/security.php';
 require_once 'core/ssl_shield.php';
+require_once 'core/render.php';
 // ==========================================
 // 📌 RELAY STATION: THE MEMORY VAULT (BOOKMARKS)
 // V7.2 - Displays saved transmissions using INNER JOIN.
@@ -162,38 +163,18 @@ try {
                         </div>
                     <?php else: ?>
                         <?php foreach ($bookmarked_transmissions as $msg): 
-                            // [ V8.0.2 ] Source labels now mirror the Timeline exactly.
-                            // The query is SELECT t.*, so is_relay is available here. A post I
-                            // merely relayed used to be labelled LOCAL_AUTHOR in the Vault while
-                            // the Timeline labelled the same post [ 🔁 RELAYED_BY_ME ] - the
-                            // Vault was crediting me with authorship of somebody else's signal.
-                            $is_relay_flag = (int)($msg['is_relay'] ?? 0);
-                            $is_own_post   = ($msg['is_remote'] == 0 && $is_relay_flag === 0);
-                            $is_my_relay   = ($msg['is_remote'] == 0 && $is_relay_flag === 1);
+                            // [ V8.1 ] The Vault renders rows through core/render.php,
+                            // the same layer the Timeline uses. v8.0.2 had to patch this
+                            // file separately because it carried its own copy of the
+                            // label: a post I had merely relayed was credited to me as
+                            // LOCAL_AUTHOR here while the Timeline correctly said
+                            // RELAYED_BY_ME. One implementation, no second fix.
+                            $author_disp = relay_author_display($msg);
+                            $src_label = relay_source_label($msg);
 
-                            $src_label = '';
-                            if ($is_own_post) { $src_label = 'LOCAL_AUTHOR:'; }
-                            elseif ($is_my_relay) { $src_label = '<span class="text-warning">[ 🔁 RELAYED_BY_ME ]</span>'; }
-                            elseif ($is_relay_flag == 1) { $src_label = '<span class="text-warning">[ 🔁 RELAYED ]</span> INCOMING FROM:'; }
-                            else { $src_label = 'INCOMING FROM:'; }
-                            $author_disp = htmlspecialchars($msg['author_alias'] ?? 'UNKNOWN');
-
-                            $stmt_res_count = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ?");
-                            $stmt_res_count->execute([$msg['id']]);
-                            $res_count = $stmt_res_count->fetchColumn();
-
-                            $stmt_my_res = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ? AND reactor_url = ?");
-                            $stmt_my_res->execute([$msg['id'], $current_local_url]);
-                            $has_roger = $stmt_my_res->fetchColumn() > 0;
-
-                            $target_planet_url = '';
-                            if ($msg['is_remote'] == 1) {
-                                $parts = explode('@', $msg['author_alias']);
-                                if (count($parts) > 1) { $target_planet_url = 'https://' . end($parts); }
-                            }
-
-                            $roger_btn_text = $has_roger ? '[ ✓ ACKNOWLEDGED ]' : '[ 📻 ROGER THAT ]';
-                            $roger_btn_class = $has_roger ? 'success' : '';
+                            $res_stats = relay_resonance_stats($db, $msg['id'], $current_local_url);
+                            $res_count = $res_stats['count'];
+                            $target_planet_url = relay_target_planet_url($msg);
                         ?>
                             <div class="t-card mb-3 p-3 transmission-card" id="bookmark-card-<?php echo $msg['id']; ?>">
                                 <div class="t-bubble-meta t-border-bottom pb-2 mb-2 d-flex justify-content-between flex-wrap gap-2">
@@ -211,38 +192,11 @@ try {
                                     <?php echo nl2br(htmlspecialchars($msg['content'])); ?>
                                 </p>
                                 
-                                <?php if(!empty($msg['media_url'])): 
-                                    $media_items = [];
-                                    if (strpos($msg['media_url'], '[') === 0) { $media_items = json_decode($msg['media_url'], true) ?? []; } 
-                                    else { $media_items = [$msg['media_url']]; }
-                                    
-                                    $m_count = count($media_items);
-                                    if ($m_count > 0):
-                                ?>
-                                    <div class="media-matrix media-matrix-<?php echo min($m_count, 4); ?>">
-                                        <?php foreach(array_slice($media_items, 0, 4) as $url): 
-                                            $ext = strtolower(pathinfo($url, PATHINFO_EXTENSION));
-                                            $is_audio = in_array($ext, ['webm', 'ogg', 'mp3', 'wav', 'm4a']);
-                                            $is_video = in_array($ext, ['mp4']);
-                                        ?>
-                                            <?php if($is_audio): ?>
-                                                <div class="matrix-item audio-cell p-2">
-                                                    <button type="button" class="t-btn warning w-100 audio-play-btn" data-src="<?php echo htmlspecialchars($url); ?>" style="font-size: 11px;">[ ▶️ PLAY AUDIO_LOG ]</button>
-                                                </div>
-                                            <?php elseif($is_video): ?>
-                                                <div class="matrix-item"><video class="matrix-video" controls preload="metadata"><source src="<?php echo htmlspecialchars($url); ?>" type="video/mp4"></video></div>
-                                            <?php else: ?>
-                                                <div class="matrix-item"><img src="<?php echo htmlspecialchars($url); ?>" class="matrix-img" alt="Saved Media"></div>
-                                            <?php endif; ?>
-                                        <?php endforeach; ?>
-                                    </div>
-                                <?php endif; endif; ?>
+                                <?php echo relay_media_matrix($msg['media_url'] ?? null, 'Saved Media'); ?>
 
                                 <div class='mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2' style='border-top: 1px dashed rgba(255,255,0,0.2);'>
                                     <div class='d-flex gap-2'>
-                                        <?php if (!$is_own_post): // [ V8.0.2 ] NO SELF-RESONANCE ?>
-                                        <button type='button' onclick="toggleRogerThat(this, <?php echo $msg['id']; ?>, '<?php echo htmlspecialchars($target_planet_url); ?>')" class='t-btn t-btn-sm <?php echo $roger_btn_class; ?>' style='padding: 2px 6px; font-size: 10px;'><?php echo $roger_btn_text; ?></button>
-                                        <?php endif; ?>
+                                        <?php echo relay_roger_button($msg, $res_stats, $target_planet_url); ?>
                                         <button type='button' onclick="removeBookmark(<?php echo $msg['id']; ?>)" class='t-btn t-btn-sm warning' style='padding: 2px 6px; font-size: 10px;'>[ 📌 SAVED (CLICK TO REMOVE) ]</button>
                                     </div>
                                     <span class='fs-small text-muted' style='font-size: 11px;'>ROGER_COUNT: <strong class='text-success'><?php echo $res_count; ?></strong></span>
@@ -293,8 +247,14 @@ try {
 
     <script src="assets/terminal.js"></script>
     <script>
-        async function toggleRogerThat(btn, id, target) {
-            if (btn.classList.contains('success')) return; 
+        // [ V8.1 ] The signal id and target come from data attributes instead of
+        // arguments interpolated into an onclick string. The target is derived
+        // from a remote node's alias, and quoting that into inline JavaScript is
+        // what made the attribute escapable in the first place.
+        async function toggleRogerThat(btn) {
+            if (btn.classList.contains('success')) return;
+            const id = btn.dataset.rogerId;
+            const target = btn.dataset.rogerTarget || '';
             btn.innerText = '[ TRANSMITTING... ]'; btn.disabled = true;
             const fd = new FormData(); fd.append('visibility', 'resonance'); fd.append('post_id', id); fd.append('target_planet', target); fd.append('content', 'roger');
             try {

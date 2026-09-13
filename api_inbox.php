@@ -148,7 +148,23 @@ try {
         $reactor_alias = strip_tags(trim($signal['reactor'] ?? 'UNKNOWN'));
         $type = strip_tags(trim($signal['type'] ?? 'roger'));
 
-        if ($post_id > 0) {
+        // 🛡️ [ V8.1 ] VALIDATE THE ACKNOWLEDGED SIGNAL
+        // post_id arrived from a remote node and used to be written straight
+        // into signal_resonance with no check that it referred to anything.
+        // A peer could therefore create resonance rows against a post that
+        // does not exist here, or - worse - against a post that is itself
+        // incoming, inflating a third party's counter inside my own database.
+        //
+        // A remote may only ever acknowledge one of MY signals, so the target
+        // must exist locally and be local (is_remote = 0). This is the mirror
+        // of the guard in core/transmitter.php, and together they say the same
+        // thing from both ends: a resonance always links a post to a reactor
+        // who is not its author.
+        $stmt_res_target = $db->prepare("SELECT is_remote FROM transmissions WHERE id = :pid");
+        $stmt_res_target->execute([':pid' => $post_id]);
+        $res_target_is_remote = $stmt_res_target->fetchColumn();
+
+        if ($post_id > 0 && $res_target_is_remote !== false && (int) $res_target_is_remote === 0) {
             $stmt_res = $db->prepare("INSERT OR IGNORE INTO signal_resonance (post_id, reactor_url, reactor_alias, resonance_type) VALUES (:pid, :url, :alias, :type)");
             $stmt_res->execute([
                 ':pid' => $post_id,
@@ -156,6 +172,9 @@ try {
                 ':alias' => $reactor_alias,
                 ':type' => $type
             ]);
+        } elseif ($post_id > 0) {
+            error_log('[RELAY][SECURITY] ignored a resonance from ' . $normalized_from
+                . ' for post ' . $post_id . ', which is not a local signal');
         }
         
         http_response_code(200);

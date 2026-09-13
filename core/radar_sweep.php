@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/security.php';
+require_once __DIR__ . '/outbox.php';
 require_once 'ssl_shield.php';
 // RELAY STATION: DEEP SPACE RADAR SWEEP
 // Pings every node in the Star Chart. Nodes that fail repeatedly are purged.
@@ -34,7 +35,11 @@ try {
     $nodes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     if (count($nodes) === 0) {
-        die("[ RADAR EMPTY ] No coordinates to scan.");
+        // Nothing to ping, but the outbox can still be holding a Direct message
+        // addressed to a node that is not in the Star Chart, so it is drained
+        // here too rather than waiting for a peer to appear.
+        $outbox = relay_outbox_flush($db);
+        die("[ RADAR EMPTY ] No coordinates to scan. " . relay_outbox_summary($db, $outbox));
     }
 
     // Machine Gun (Multi-CURL) for simultaneous pinging
@@ -113,7 +118,21 @@ try {
     }
     curl_multi_close($mh);
 
-    echo "[ SWEEP COMPLETE ] Active: $active_nodes | Silent (kept, grace " . RELAY_SWEEP_GRACE_LIMIT . "): $silent_nodes | Purged: $purged_nodes";
+    // ==========================================================
+    // 📮 [ V8.1 ] SPEND THE OUTBOX
+    // ==========================================================
+    // The sweep has just learned which peers are up, which makes it the right
+    // moment to spend the queue of deliveries that were made while they were
+    // down. Doing it here - rather than in a cron the operator has to install -
+    // means store-and-forward works on the same trigger the sweep already had.
+    //
+    // relay_outbox_flush() takes an exclusive lock and returns without sending
+    // anything if another flush is already running, so two console tabs cannot
+    // deliver the same queued row twice.
+    $outbox = relay_outbox_flush($db);
+
+    echo "[ SWEEP COMPLETE ] Active: $active_nodes | Silent (kept, grace " . RELAY_SWEEP_GRACE_LIMIT . "): $silent_nodes | Purged: $purged_nodes "
+        . relay_outbox_summary($db, $outbox);
 
 } catch (PDOException $e) {
     error_log('[RELAY] radar sweep failed: ' . $e->getMessage());

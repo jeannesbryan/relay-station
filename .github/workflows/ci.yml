@@ -90,6 +90,16 @@ jobs:
       - name: Radar sweep checks (unreachable peers, grace period)
         run: php tests/radar_test.php
 
+      # Added in v8.1. The shared render layer is the single place the Timeline,
+      # the Vault and the landing page now agree on, so its behaviour - and the
+      # escaping of remote-supplied values - is pinned here rather than in three
+      # template reviews.
+      - name: Shared render layer checks (labels, media, buttons)
+        run: php tests/render_test.php
+
+      - name: Store-and-forward outbox checks
+        run: php tests/outbox_test.php
+
       - name: Smoke test (every entry point loads without a fatal)
         run: php tests/smoke_test.php
 
