@@ -44,6 +44,8 @@ $manifest = [
     'core/security.php',
     'core/ssl_shield.php',
     'core/db_connect.php',
+    'core/render.php',
+    'core/outbox.php',
     'core/transmitter.php',
     'core/radar_sweep.php',
     'core/add_planet.php',

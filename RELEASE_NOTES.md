@@ -4,11 +4,184 @@ Single source of truth for the release history. Newest first.
 
 | Version | Codename | Type |
 |---|---|---|
+| [8.1.0](#810--courier) | Courier | Store-and-forward, and one source of truth |
 | [8.0.4](#804--aegis) | Aegis | The fleet reports itself |
 | [8.0.3](#803--aegis) | Aegis | Resilience |
 | [8.0.2](#802--aegis) | Aegis | UI correctness |
 | [8.0.1](#801--aegis) | Aegis | Hotfix |
 | [8.0.0](#800--aegis) | Aegis | Security & architecture overhaul |
+
+---
+
+## 8.1.0 — COURIER
+
+```
+> APPLYING_MINOR_8.1.0...
+> SCOPE: DELIVERY GUARANTEES (core/outbox.php) + SHARED RENDER LAYER (core/render.php)
+> DB_MIGRATION: REQUIRED — run installer/upgrade_db.php (adds the `outbox` table)
+> STATUS: STABLE
+```
+
+Two things change behaviour, which is why this is a minor release and not a
+patch: a signal that reached nobody is now kept and delivered later, and a node
+can no longer acknowledge its own signals through any path.
+
+### Nothing is lost in transit
+
+Before this, a delivery had exactly one attempt and five seconds to succeed. A
+peer that was rebooting, a laptop with its lid closed, a DNS entry momentarily
+gone — each of those silently cost the operator a delivery they believed had
+happened. The only trace was a line in a server log, which is to say nobody was
+told. For a network whose entire premise is that you own the sending, that was
+the wrong failure mode.
+
+A delivery that fails for a reason time can fix is now queued in `outbox` and
+spent by the Radar Sweep, which already knows which peers are up — so
+store-and-forward works on a trigger that already existed, with no cron for the
+operator to install.
+
+The queue is bounded on every axis, because an unbounded queue is a disk
+failure waiting for a long enough outage:
+
+| Bound | Value | Why |
+|---|---|---|
+| Attempts | 8 | enough to ride out a reboot, not enough to nag forever |
+| Backoff | 15s × n², capped at 1 hour | a peer down for a minute is retried quickly; one down for a day is not hammered |
+| Age | 7 days | however it got here, it expires |
+| Depth | 500 rows | a peer that is never coming back cannot fill the disk |
+
+Only `public` broadcasts and `direct` messages are queued. The tactical pulses
+(`sonar_pulse`, `ack_receipt`, `resonance`, `scorched_earth`, `global_purge`) are
+deliberately excluded: they are machine chatter whose meaning expires with the
+moment, and a sonar ping that arrives six hours late is not a late delivery, it
+is a false statement about the present.
+
+#### The judgement call worth stating
+
+**A delivery is queued only when the target never answered at all** — no HTTP
+response of any kind. An ally that answered *even with a 500* is deliberately
+not retried.
+
+That is not laziness. A broadcast carries no idempotency key: `api_inbox.php`'s
+anti-loop shield compares `origin_id`, and a plain public post leaves that column
+`NULL`, so a retry after a post-insert failure would publish the operator's
+signal a second time on a peer's timeline. Losing one delivery is bad. Posting it
+twice on somebody else's node cannot be undone from here. So the test is
+`CURLINFO_HTTP_CODE === 0`, not `is not 2xx`.
+
+This is at-least-once delivery, not exactly-once, and closing the remaining gap
+needs a stable per-signal identifier that `api_inbox.php` can de-duplicate on.
+That is a change to what `origin_id` means and was not smuggled into this
+release.
+
+### Self-resonance is refused by the server now
+
+v8.0.2 stopped rendering the ROGER THAT button on your own transmissions. The
+button was the only thing enforcing it: a direct POST with your own post id
+still wrote a resonance row against yourself. Hiding a control is not a rule.
+
+The rule is that an acknowledgement has to have somebody on the other end of it,
+so the acknowledged signal must be incoming. The transmitter enforces it, the
+receiver refuses to record a resonance against anything that is not one of its
+own local signals, and `relay_can_resonate()` in the render layer is the same
+predicate — so the button and the endpoint cannot disagree again.
+
+A consequence worth naming: **a relay of somebody else's signal can no longer be
+acknowledged either.** The row is local, so it has no remote author to notify,
+and the counter could only ever move on your own screen. An acknowledgement
+nobody receives is noise presented as a metric.
+
+### A remote node could add an attribute to a button
+
+The AJAX Timeline path built its acknowledge button as an inline JavaScript
+string:
+
+```php
+"<button type='button' onclick=\"toggleRogerThat(this, {$id}, '{$target_planet_url}')\" …"
+```
+
+`$target_planet_url` is derived from a remote node's alias and was interpolated
+**unescaped**, while the two template paths escaped it. The same button was safe
+in two places and injectable in the third. A peer registering an alias of
+
+```
+EVIL@evil.example" onmouseover="alert(1)
+```
+
+produced this, which the v8.0.4 code really did emit:
+
+```
+<button type='button' onclick="toggleRogerThat(this, 7, 'https://evil.example" onmouseover="alert(1)')">
+```
+
+The target now travels in a `data-` attribute and the handler reads it, so there
+is no string literal to escape out of. The test parses the emitted tag back with
+a quote-aware scanner and fails if a value became an attribute — and it was
+pointed at the v8.0.4 markup to confirm it reports the injection rather than
+merely passing.
+
+`tests/outbox_test.php` covers the same class of thing for the origin DNA on the
+relay button.
+
+### One malformed attachment could take the Timeline down
+
+`media_url` is either a bare URL or a JSON array. When it was JSON that decoded
+to something other than an array — a scalar, an object — the value reached
+`array_slice()` and raised a TypeError, so one bad row blanked the page. The
+decode is now type-checked.
+
+### One set of words
+
+The public landing page said `LOCAL_TRANSMISSION:` and `FROM:` where the
+Timeline and the Vault said `LOCAL_AUTHOR:` and `INCOMING FROM:`. Two
+vocabularies for one concept is exactly how the v8.0.2 mislabelling happened —
+the Vault credited a relayed signal to its relayer while the Timeline correctly
+named the author. There is now one set.
+
+### Why `core/render.php` exists
+
+The source label, the media matrix, the acknowledge button and the relay button
+existed in five separate places. Every one of them had to be fixed separately:
+v8.0.2 fixed the Vault's label while the Timeline needed its own fix, and the
+escaping gap above existed **only in the third copy**. The rule for what lives
+in the shared layer is markup derived from a transmission row that must look the
+same everywhere it is shown:
+
+| Extracted | Places that had their own copy |
+|---|---|
+| source label | 5 |
+| media matrix | 4 |
+| acknowledge button | 3 |
+| relay button + origin DNA hash | 2 (both in console.php) |
+| resonance counts | 4 |
+
+This is the reason for the release name. A fix has to land once, or it lands
+five times and gets missed.
+
+### Upgrade
+
+```
+1. Copy the new files over the installation.
+2. Run:  php installer/upgrade_db.php     <-- adds the `outbox` table
+3. Load the console once.
+```
+
+Step 2 is required. The Radar Sweep calls into the outbox on every pass, so
+without the table a sweep will fail rather than report.
+
+### Verification
+
+- 180 pre-existing assertions still pass (markup 5, security 105, shield 8,
+  media 37, radar 12, smoke 13).
+- 53 new assertions in `tests/render_test.php`, 45 in
+  `tests/outbox_test.php`; both wired into CI.
+- Against a sandbox node over real HTTP: acknowledging your own post, your own
+  relay, and a post that does not exist are all refused; acknowledging an
+  incoming signal succeeds and writes exactly one row.
+- With two allies, one silent and one answering, a broadcast queues **exactly
+  one** row — for the silent one — and the signal is in local memory either way.
+- A second sweep in the same second does not attempt the queued row again, so
+  the backoff holds.
 
 ---
 
