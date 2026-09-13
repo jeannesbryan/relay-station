@@ -1285,14 +1285,16 @@ try {
                         <span class="font-bold text-success">> THE ESCAPE POD (DATA PORTABILITY)</span>
                         <div class="mt-2 fs-small text-muted">
                             > Download your core memory before migrating to a new domain. Restore it later to activate the <strong>Token Re-Sync Protocol</strong>.
-                            <form method="POST" action="console.php" class="m-0 mt-2">
-                                <?php echo relay_csrf_field(); ?>
-                                <button type="submit" name="escape_pod" value="1" class="t-btn success t-btn-sm w-100 text-center">[ 📥 EXPORT CORE DATABASE ]</button>
-                            </form>
-                            <form method="POST" action="console.php" class="m-0 mt-2">
-                                <?php echo relay_csrf_field(); ?>
-                                <button type="submit" name="export_station" value="1" class="t-btn warning t-btn-sm w-100 text-center font-bold">[ 📦 BACKUP WHOLE STATION (ZIP) ]</button>
-                            </form>
+                            <!-- These two buttons deliberately carry no form wrapper of their own.
+                                 A form element may not be nested inside #control-room-form: the HTML
+                                 parser ignores the inner start tag, so the following end tag closes
+                                 the OUTER form early, and everything after it - the Telegram block,
+                                 the passcode field and the APPLY_CONFIGURATION button - ends up
+                                 outside the form. That is why APPLY silently did nothing.
+                                 They instead target the standalone forms declared after this modal,
+                                 through the HTML5 form="" attribute. -->
+                            <button type="submit" form="escape-pod-db-form" name="escape_pod" value="1" class="t-btn success t-btn-sm w-100 text-center mt-2">[ 📥 EXPORT CORE DATABASE ]</button>
+                            <button type="submit" form="escape-pod-zip-form" name="export_station" value="1" class="t-btn warning t-btn-sm w-100 text-center font-bold mt-2">[ 📦 BACKUP WHOLE STATION (ZIP) ]</button>
                         </div>
                     </div>
 
@@ -1316,8 +1318,16 @@ try {
                         <input type="password" id="cr-passcode" class="t-input" placeholder="> Leave blank to keep current passcode...">
                     </div>
 
-                    <button type="submit" class="t-btn warning w-100 font-bold t-glow">[ APPLY_CONFIGURATION ]</button>
+                    <button type="submit" id="cr-apply-btn" class="t-btn warning w-100 font-bold t-glow">[ APPLY_CONFIGURATION ]</button>
                 </form>
+
+                <!-- Standalone submit targets for THE ESCAPE POD buttons above. They have to live
+                     OUTSIDE #control-room-form, because a nested form element is invalid HTML and
+                     makes the browser close the outer form early - which is exactly what used to
+                     orphan the APPLY button. Each carries its own CSRF token; the button
+                     contributes its name/value when it is clicked. -->
+                <form id="escape-pod-db-form" method="POST" action="console.php" class="m-0" style="display:none;"><?php echo relay_csrf_field(); ?></form>
+                <form id="escape-pod-zip-form" method="POST" action="console.php" class="m-0" style="display:none;"><?php echo relay_csrf_field(); ?></form>
             </div>
         </div>
     </div>
@@ -1575,7 +1585,11 @@ try {
         if (crForm) {
             crForm.addEventListener('submit', async function(e) {
                 e.preventDefault();
-                const btn = this.querySelector('button[type="submit"]');
+                // Target the Apply button by id, not with querySelector('button[type=submit]'):
+                // the Escape Pod buttons are submit buttons inside this form's DOM subtree too
+                // (they are owned by their own forms through form="", but querySelector does not
+                // know about form ownership), so the old lookup relabelled the wrong button.
+                const btn = document.getElementById('cr-apply-btn');
                 btn.innerText = '[ UPDATING_CORE_MEMORY... ]';
                 
                 const formData = new FormData();

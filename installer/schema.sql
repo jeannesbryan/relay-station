@@ -1,6 +1,10 @@
 -- ==========================================================
--- RELAY STATION: CORE MEMORY SCHEMA (V7.3 - The Relay Protocol)
+-- RELAY STATION: CORE MEMORY SCHEMA (V8.0.1 - Aegis)
 -- ==========================================================
+-- This file is the complete description of the core memory. If a table is
+-- added here it must match what the application creates at runtime, and vice
+-- versa: a table the app provisions on its own but that is missing here is a
+-- silent gap for anyone reading (or restoring) the schema.
 
 -- 1. Gudang Transmisi (Log Sinyal Utama)
 CREATE TABLE IF NOT EXISTS transmissions (
@@ -88,6 +92,21 @@ CREATE TABLE IF NOT EXISTS bookmarks (
     transmission_id INTEGER NOT NULL,
     bookmarked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(transmission_id)
+);
+
+-- ==========================================================
+-- ⏱️ 9. [ V8.0.1 ] THE RATE LIMITER (fixed-window counters)
+-- ==========================================================
+-- Declared here for completeness: core/security.php relay_rate_limit() also
+-- issues this exact CREATE TABLE IF NOT EXISTS on first use, so installations
+-- that predate this file keep working unchanged (the definitions are identical,
+-- so whichever runs first wins). One row per bucket per window; the bucket
+-- string keeps each endpoint's counter independent.
+CREATE TABLE IF NOT EXISTS relay_rate_limits (
+    bucket TEXT NOT NULL,
+    window_start INTEGER NOT NULL,
+    hits INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (bucket, window_start)
 );
 
 -- ==========================================================
