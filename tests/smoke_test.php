@@ -13,6 +13,23 @@
 
 $ROOT = dirname(__DIR__);
 
+// ---------------------------------------------------------------------------
+// Sandbox. Several entry points require core/db_connect.php, which creates the
+// SQLite file on first use. Without an override that file lands in the
+// repository's own data/ directory - which is where it went until CI caught it,
+// on this workflow's very first run, via the "no database left behind" step.
+// RELAY_DB_FILE redirects it here instead. The directory is reused across cases
+// so the schema is created once, and removed at the end.
+// ---------------------------------------------------------------------------
+$sandbox = sys_get_temp_dir() . '/relay_smoke_' . getmypid();
+$sandboxDb = $sandbox . '/data/relay_core.sqlite';
+$sandboxSess = $sandbox . '/sessions';
+
+foreach ([$sandbox . '/data', $sandbox . '/media', $sandboxSess] as $d) {
+    if (!is_dir($d)) { mkdir($d, 0777, true); }
+}
+foreach ([$sandboxDb, $sandboxDb . '-wal', $sandboxDb . '-shm'] as $f) { @unlink($f); }
+
 // name => superglobals to simulate
 $cases = [
     'index.php'               => ['GET' => []],
@@ -71,7 +88,7 @@ if ($ext_dir && is_dir($ext_dir)) {
 
 foreach ($cases as $rel => $sim) {
     $boot = '$root = ' . var_export($ROOT, true) . ';';
-    $boot .= 'ini_set("session.save_path", "/tmp/relay_smoke_sess");';
+    $boot .= 'ini_set("session.save_path", ' . var_export($sandboxSess, true) . ');';
     $boot .= '$_SERVER["REQUEST_METHOD"] = ' . var_export(
         isset($sim['POST']) ? 'POST' : 'GET', true) . ';';
     $boot .= '$_SERVER["HTTPS"]="on"; $_SERVER["SERVER_PORT"]=443;';
@@ -89,7 +106,8 @@ foreach ($cases as $rel => $sim) {
            . ' fwrite(STDERR, "\\nSMOKE_FATAL: " . $e["message"]); } });';
     $boot .= 'require $root . ' . var_export('/' . $rel, true) . ';';
 
-    $cmd = $php_cmd . ' -d display_errors=1 -d error_reporting=E_ALL -r '
+    $cmd = 'RELAY_DB_FILE=' . escapeshellarg($sandboxDb)
+         . ' ' . $php_cmd . ' -d display_errors=1 -d error_reporting=E_ALL -r '
          . escapeshellarg($boot) . ' 2>&1';
     $out = (string) shell_exec($cmd);
 
@@ -112,6 +130,30 @@ foreach ($cases as $rel => $sim) {
             if (stripos($l, $hit) !== false) { echo "          " . trim($l) . "\n"; break; }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Tear the sandbox down, and prove it: the point of RELAY_DB_FILE is that this
+// suite cannot write into the repository, so if a database is still sitting in
+// data/ afterwards, something ignored the override.
+// ---------------------------------------------------------------------------
+$rm = function ($path) use (&$rm) {
+    if (is_dir($path)) {
+        foreach (scandir($path) as $e) {
+            if ($e === '.' || $e === '..') { continue; }
+            $rm($path . '/' . $e);
+        }
+        @rmdir($path);
+    } else {
+        @unlink($path);
+    }
+};
+$rm($sandbox);
+
+$strayDb = $ROOT . '/data/relay_core.sqlite';
+if (file_exists($strayDb)) {
+    echo "  FAIL  smoke test wrote into the repository's data/ directory\n";
+    $fail++;
 }
 
 echo "\n==================================================================\n";
