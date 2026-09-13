@@ -90,7 +90,25 @@ On the own post, `ROGER_COUNT` read **1** while the button was absent — provin
 - `sw.js` cache name is bumped to `relay-bunker-v8.0.2`.
 - ⚠️ `terminal.css` is served with a **4 hour Cloudflare edge TTL**. Purge `/relay/assets/terminal.css` (or the whole cache) after deploying, otherwise the spacing change will not appear until that TTL expires. Page output (`console.php`, `bookmarks.php`) is `no-store` and needs nothing.
 - Source files changed: `assets/terminal.css`, `console.php`, `bookmarks.php`, `version.json`, `sw.js`, `core/security.php` (version comment + outbound user-agent).
-- `installer/relay.zip` is rebuilt from this tree and is gitignored by design — ship it alongside the source.
+
+### 📦 Release artifacts — two archives, and which one you want
+
+`install.php` reads `relay.zip` and `schema.sql` from its **own directory**, extracts the inner archive into that same directory, builds the database from the schema, then self-destructs. So the outer archive has to carry all three:
+
+```
+relay-station-8.0.2.zip          ← the one you deploy
+├── install.php                  the drop-pod installer
+├── schema.sql                   core memory definition
+└── relay.zip                    the application itself (26 files)
+```
+
+**Upload `relay-station-8.0.2.zip` to the target directory, extract it in place, then open `install.php` in a browser**, set the master passcode, and press INITIATE_DEPLOYMENT. When it finishes it deletes `install.php`, `schema.sql`, `relay.zip` **and the outer `relay-station-*.zip` itself**, leaving only the running station.
+
+`relay.zip` on its own is the inner component and is useless without the other two — it is attached separately only so the contents can be inspected without unpacking twice.
+
+A packaging bug was found and fixed while building this release: the self-destruct matched the outer wrapper with the single pattern `Relay-Installer*.zip`, which stopped matching as soon as the archive was shipped under the release naming. The wrapper — which contains the full application source — would have been left sitting in the webroot at a guessable URL. It now matches `relay-station-*.zip` as well, and only those prefixes, so unrelated archives an operator keeps in the same directory are never touched.
+
+Both archives are gitignored by design (build artifacts, not source) — ship them alongside the source.
 
 ---
 

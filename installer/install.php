@@ -1,5 +1,5 @@
 <?php
-// RELAY STATION: DROP-POD INSTALLER V7.2 (The Social Signal Update)
+// RELAY STATION: DROP-POD INSTALLER V8.0.2 (Aegis)
 // This script will extract core files, build the database, and self-destruct.
 
 // ---------------------------------------------------------------------------
@@ -161,11 +161,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['passcode'])) {
                         @unlink($zip_file);    // Delete relay.zip (Inner ZIP)
                         @unlink($schema_file); // Delete schema.sql
                         
-                        // Delete outer wrapper (Outer ZIP) if the user forgets to delete it
-                        $installer_zips = glob('Relay-Installer*.zip');
-                        if ($installer_zips) {
-                            foreach ($installer_zips as $iz) { @unlink($iz); }
+                        // Delete the outer wrapper (Outer ZIP) if the user forgets.
+                        // This matters: the wrapper contains relay.zip, which is the
+                        // whole application source plus schema. Left in the webroot it
+                        // is a source disclosure at a guessable URL.
+                        //
+                        // Matched by pattern rather than by a single name so the
+                        // release can be renamed without silently losing this step -
+                        // the previous single pattern ('Relay-Installer*.zip') stopped
+                        // matching the moment the archive was shipped as
+                        // relay-station-<version>.zip, which would have left the
+                        // wrapper behind. Listing only these prefixes also avoids
+                        // deleting unrelated archives the operator may keep here.
+                        $installer_zips = [];
+                        foreach (['relay-station-*.zip', 'Relay-Installer*.zip'] as $pattern) {
+                            foreach (glob($pattern) as $iz) { $installer_zips[] = $iz; }
                         }
+                        foreach (array_unique($installer_zips) as $iz) { @unlink($iz); }
                         
                         @unlink(__FILE__);     // Delete install.php (This script itself!)
                         
@@ -233,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['passcode'])) {
             <p style="font-size: 12px; margin-top: 20px; opacity: 0.7;">Redirecting to Main Console...</p>
         <?php else: ?>
             <h2 style="margin-bottom: 5px;">> RELAY GENESIS <span class="t-blink">_</span></h2>
-            <p style="font-size: 12px; opacity: 0.7; margin-bottom: 25px;">System detected <strong>relay.zip</strong>. Initialize deployment sequence V7.2</p>
+            <p style="font-size: 12px; opacity: 0.7; margin-bottom: 25px;">System detected <strong>relay.zip</strong>. Initialize deployment sequence V8.0.2</p>
             
             <?php if($error_msg): ?>
                 <div style="background: rgba(255,0,60,0.1); color: var(--t-red); border: 1px dashed var(--t-red); padding: 10px; font-size: 12px; margin-bottom: 20px; text-align: left;">
