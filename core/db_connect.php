@@ -4,7 +4,10 @@
 // ==========================================
 // Centralized Database Connection with WAL Mode & Anti-Collision System
 
-$db_file = __DIR__ . '/../data/relay_core.sqlite';
+// [ V8.0.3 ] The path is overridable, which the test suite needs: a test that
+// exercises the database must never write to the operator's live core memory.
+// Unset (the normal case) this is exactly the old hard-coded path.
+$db_file = getenv('RELAY_DB_FILE') ?: __DIR__ . '/../data/relay_core.sqlite';
 
 try {
     $db = new PDO("sqlite:" . $db_file);

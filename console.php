@@ -959,7 +959,11 @@ try {
         </div>
     </div>
 
-    <div class="t-container-fluid pt-0">
+    <!-- [ V8.0.3 ] 'pt-0' was removed here. terminal.css never defined pt-0, so
+         it never did anything; defining it now would pull this navbar 20px above
+         where it sits on direct.php, which uses the same container without it.
+         The navbar's own mt-3 is what sets the gap. -->
+    <div class="t-container-fluid">
         <nav class="t-navbar mt-3 mb-4">
             <div class="t-nav-brand">
                 <span class="t-led-dot t-led-green"></span> <?php echo htmlspecialchars($station_name); ?> 

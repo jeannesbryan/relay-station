@@ -300,7 +300,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $running = null;
                 do { curl_multi_exec($mh, $running); } while ($running);
                 
-                foreach ($allies as $i => $ally) { curl_multi_remove_handle($mh, $curl_array[$i]); }
+                // [ V8.0.3 ] Only remove handles that were actually created.
+                // relay_node_curl() returns null when the outbound guard refuses
+                // a URL - which happens whenever an ally is offline, because a
+                // host that does not resolve is rejected. Passing that null to
+                // curl_multi_remove_handle() is a TypeError, so a single offline
+                // ally used to turn a successful broadcast into a 500 after the
+                // signal had already gone out.
+                foreach ($allies as $i => $ally) {
+                    if (!empty($curl_array[$i])) {
+                        curl_multi_remove_handle($mh, $curl_array[$i]);
+                    }
+                }
                 curl_multi_close($mh);
             }
 
@@ -322,18 +333,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $direct_payload['handshake_token'] = $hs_token;
                 $json_payload = json_encode($direct_payload);
                 
+                // [ V8.0.3 ] Same null hazard as the broadcast path: the guard
+                // returns null for an unreachable target, and every curl_* call
+                // below would then fatal. The signal is already in local memory
+                // at this point, so an unreachable target degrades to "not
+                // delivered" rather than a 500.
                 $ch = relay_node_curl($target_url);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, $json_payload);
-                curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                    'Content-Type: application/json',
-                    'Content-Length: ' . strlen($json_payload),
-                    'User-Agent: RelayStation-Transmitter/7.3' // [ V7.3 ] WAF Bypass Upgrade
-                ]);
-                curl_setopt($ch, CURLOPT_TIMEOUT, 5); 
-                curl_exec($ch);
-                curl_close($ch);
+                if ($ch) {
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_POST, true);
+                    curl_setopt($ch, CURLOPT_POSTFIELDS, $json_payload);
+                    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                        'Content-Type: application/json',
+                        'Content-Length: ' . strlen($json_payload),
+                        'User-Agent: RelayStation-Transmitter/8.0.3'
+                    ]);
+                    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+                    curl_exec($ch);
+                    curl_close($ch);
+                } else {
+                    error_log('[RELAY] laser link not delivered, target unreachable or refused by the outbound guard: ' . $target_url);
+                }
             }
         }
         

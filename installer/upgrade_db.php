@@ -124,6 +124,27 @@ try {
         error_log('[RELAY] v8.0 migration: transmissions visibility constraint repaired');
     }
 
+    // ==========================================
+    // ⏳ [ V8.0.3 ] RADAR SWEEP GRACE PERIOD
+    // ==========================================
+    // core/radar_sweep.php now needs to know how long a peer has been silent,
+    // so the Star Chart keeps a last successful ping and a consecutive-failure
+    // counter. Without these, a node that missed a single 5-second ping was
+    // deleted outright.
+    // Idempotent: ALTER TABLE throws once the column exists, which is the
+    // same pattern the V7.3 columns above use, so this is safe to re-run.
+    try {
+        $db_upgrade->exec("ALTER TABLE following ADD COLUMN last_seen DATETIME DEFAULT NULL");
+    } catch (Exception $e) {
+        // Kolom sudah ada.
+    }
+
+    try {
+        $db_upgrade->exec("ALTER TABLE following ADD COLUMN failure_count INTEGER DEFAULT 0");
+    } catch (Exception $e) {
+        // Kolom sudah ada.
+    }
+
 } catch (Exception $e) {
     // Fatal error jika SQLite terkunci atau rusak parah
     error_log("[ MIGRATION FATAL ERROR ] " . $e->getMessage());

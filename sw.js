@@ -1,9 +1,9 @@
 // RELAY STATION: BACKGROUND SERVICE WORKER
 // Memenuhi syarat PWA browser & Mode Bunker (Caching)
 
-// Bumped for v8.0.2. The version string is what forces an upgrade: a client
+// Bumped for v8.0.3. The version string is what forces an upgrade: a client
 // holding the old cache keeps serving the old CSS/JS until this changes.
-const CACHE_NAME = 'relay-bunker-v8.0.2';
+const CACHE_NAME = 'relay-bunker-v8.0.3';
 
 // Served from this origin. These were previously pulled from a CDN, which
 // meant the stylesheet could not be loaded offline and a CDN outage would

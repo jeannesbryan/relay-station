@@ -4,9 +4,156 @@ Single source of truth for the release history. Newest first.
 
 | Version | Codename | Type |
 |---|---|---|
+| [8.0.3](#803--aegis) | Aegis | Resilience |
 | [8.0.2](#802--aegis) | Aegis | UI correctness |
 | [8.0.1](#801--aegis) | Aegis | Hotfix |
 | [8.0.0](#800--aegis) | Aegis | Security & architecture overhaul |
+
+---
+
+## 8.0.3 — AEGIS
+
+```
+> APPLYING_PATCH_8.0.3...
+> SCOPE: PEER RESILIENCE, REGRESSION SUITE, CI
+> DB_MIGRATION: REQUIRED (two columns on `following`)
+> STATUS: STABLE
+```
+
+This release is about what happens when a peer goes away. Three fatal crashes
+were reachable from the ordinary state of having a followed node that is
+offline, and the Radar Sweep was deleting peers for being briefly unavailable.
+
+### 1. 🔴 Three fatal 500s whenever any peer was offline
+
+The outbound guard refuses **any host that does not resolve** — which is exactly
+what an offline peer looks like. `relay_node_curl()` therefore returns `null`,
+and in three places that `null` was handed straight to the curl functions:
+
+| Location | Call | Effect |
+|---|---|---|
+| `core/radar_sweep.php:48` | `curl_getinfo(null)` | Sweep dies, **no node purged**, no summary |
+| `core/transmitter.php:303` | `curl_multi_remove_handle($mh, null)` | Broadcast dies **after** the signal is already out |
+| `core/transmitter.php:326` | `curl_setopt(null, ...)` | Laser Link dies before anything is sent |
+
+The failure mode is the worst kind: an uncaught `TypeError`, an **empty response
+body**, and nothing in the UI to explain it. One offline ally was enough to take
+out Radar Sweep, Broadcast and Laser Link at once.
+
+This was not a house-wide lapse. **Nine of the twelve** `relay_node_curl()` call
+sites already guarded the null with `if (!$ch) { continue; }`. These three had
+been missed.
+
+**Reproduced before fixing**, on a throwaway instance with a dead peer in the
+`following` table:
+
+```
+PHP Fatal error: Uncaught TypeError: curl_getinfo(): Argument #1 ($handle)
+must be of type CurlHandle, null given in radar_sweep.php:48
+→ HTTP 500, 0 bytes, both nodes still present
+```
+
+### 2. ⏳ Radar Sweep now gives a silent peer a grace period
+
+A node used to be deleted the **first time a single 5-second ping** went
+unanswered. A reboot, a laptop lid, a sleeping host or a brief upstream outage
+cost the operator the relationship permanently — and the Star Chart silently
+forgot a peer that was never gone. The `following` table did not even record
+when a node was last heard from.
+
+A node is now purged only after **3 consecutive unanswered sweeps**, and any
+successful ping resets the counter:
+
+| After | `failure_count` | Row |
+|---|---|---|
+| Sweep 1 silent | 1 | kept |
+| Sweep 2 silent | 2 | kept |
+| Sweep 3 silent | — | **purged** |
+| any sweep answered | 0 | kept, `last_seen` updated |
+
+The summary line is now honest about the three outcomes:
+
+```
+[ SWEEP COMPLETE ] Active: 2 | Silent (kept, grace 3): 1 | Purged: 0
+```
+
+Two columns are added to `following`: `last_seen` and `failure_count`.
+
+### 3. 🧹 `pt-0` removed instead of armed
+
+`console.php` and `bookmarks.php` carried `pt-0` on their top-level container.
+`terminal.css` never defined it, so it was always a no-op — and **defining it
+would have been the wrong move**: measured in a browser, honouring it pulls
+those navbars **20px above** where `direct.php` sits, which uses the same
+container without the class. The class was stray, so it is gone. The trap is
+removed rather than armed.
+
+### 4. ✅ Continuous integration, and two regression suites
+
+The suite already had real assertions — **180 checks** — but nothing ran them.
+That is how a button with no form owner and three curl-null crashes all reached
+a live node.
+
+`.github/workflows/ci.yml` now runs on every push, across **PHP 8.1, 8.2 and
+8.3**:
+
+- a **lint job** over every PHP file (separate from the tests, because "does not
+  parse" and "parses but misbehaves" are different failures)
+- a **test job** running all six suites
+- a final check that the run **left no database behind** in `data/`
+
+Two new suites target the exact bug classes this project has actually shipped:
+
+| Suite | Guards | Proven to catch it |
+|---|---|---|
+| `tests/markup_test.php` | nested forms (the v8.0.1 cause), orphan tags, `form=""` references that point nowhere, **inert submit buttons** | Run against the v8.0.0 `console.php`, it fails: *nested form at console.php:1288* and *:1292* — the Escape Pod forms |
+| `tests/radar_test.php` | unreachable peers, and the grace period | Run against the v8.0.2 `radar_sweep.php`, it fails on all four fatal checks |
+
+A test that always passes proves nothing, so both were verified by running them
+against the **old buggy revision** and confirming they fail.
+
+`core/db_connect.php` gained a `RELAY_DB_FILE` override so a test that touches
+the database can never write to the operator's live core memory. Unset — the
+normal case — the path is unchanged. CI asserts this.
+
+### 🔬 Verification
+
+| Check | Result |
+|---|---|
+| `php -l` on 25 files | 0 failures |
+| markup_test | 5 passed |
+| security_test | 105 passed |
+| shield_test | 8 passed |
+| media_test | 37 passed |
+| radar_test | 12 passed |
+| smoke_test | 13 passed |
+| **total** | **180 passed, 0 failed** |
+| markup_test vs v8.0.0 markup | **fails** (2 nested forms) — the guard is real |
+| radar_test vs v8.0.2 radar | **fails** (4 fatal checks) — the guard is real |
+
+### 📦 Upgrading
+
+- Replace the application files. **Do not overwrite `data/` or `media/`.**
+- ⚠️ **Run `php installer/upgrade_db.php`** — it adds `last_seen` and
+  `failure_count` to `following`. Idempotent, safe to re-run, no data loss.
+- `sw.js` cache name is bumped to `relay-bunker-v8.0.3`.
+- Source files changed: `core/radar_sweep.php`, `core/transmitter.php`,
+  `core/db_connect.php`, `core/security.php`, `installer/schema.sql`,
+  `installer/upgrade_db.php`, `console.php`, `bookmarks.php`, `version.json`,
+  `sw.js`, plus two new test suites and the CI workflow.
+- Artifacts: `relay-station-8.0.3.zip` is the one you deploy (see the layout
+  note under 8.0.2).
+
+### 📋 Still open (unchanged)
+
+- **Store-and-forward outbox** — relay is still a single best-effort attempt;
+  this release stops it from *crashing* when a peer is offline, but the signal is
+  still not queued for later delivery.
+- **The duplicated card markup** — five copies of the source-label logic and
+  three copies of the card markup. That duplication is what produced both fixed
+  bugs. A `core/render.php` remains the right fix, and is now cheaper to attempt
+  because the suites above will hold the behaviour in place.
+- **Self-resonance is not server-enforced** (UI-level only, by choice).
 
 ---
 

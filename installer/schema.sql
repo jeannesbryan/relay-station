@@ -30,12 +30,21 @@ CREATE TABLE IF NOT EXISTS transmissions (
 );
 
 -- 2. Peta Bintang (Stasiun sekutu yang Anda pantau)
+-- [ V8.0.3 ] The Star Chart remembers how each peer has been behaving.
+--   last_seen     last successful Radar Sweep ping. NULL means the node has
+--                 never answered since it was added.
+--   failure_count consecutive sweeps that went unanswered. Reset to 0 by any
+--                 successful ping; the node is purged on reaching
+--                 RELAY_SWEEP_GRACE_LIMIT (see core/radar_sweep.php).
+-- Both exist so that "silent once" no longer means "gone forever".
 CREATE TABLE IF NOT EXISTS following (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     planet_url TEXT UNIQUE NOT NULL,
     alias TEXT,                  -- Akan terisi nama domain jika dikosongkan
     handshake_token TEXT,        -- [NEW V6.2] Token Rahasia Anti-Spoofing & Pemicu Re-Sync
-    added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_seen DATETIME DEFAULT NULL,
+    failure_count INTEGER DEFAULT 0
 );
 
 -- 3. Daftar Pengikut (Stasiun yang memantau Anda)
