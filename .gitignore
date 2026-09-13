@@ -28,22 +28,3 @@
 # the application tree when a release is cut.
 # ---------------------------------------------------------------
 /installer/relay.zip
-
-# ---------------------------------------------------------------
-# STAGING - NOT SOURCE. Do not commit these.
-#
-# Recovered from git history and parked in the root so the operator
-# can copy them out to the Lighthouse (hub) server. They are NOT part
-# of a node: api_register.php and api_directory.php are the hub's
-# public, unauthenticated endpoints, and index.html is the hub's
-# landing page. Committing them would undo the node/hub split.
-#
-# This block is a local safeguard so `git add -A` cannot sweep them
-# into the v8.0 tag by accident. Remove it once the files have been
-# collected, or move them into the relay-lighthouse repository.
-# ---------------------------------------------------------------
-/api_register.php
-/api_directory.php
-/setup_lighthouse.php
-/lighthouse_config.example.php
-/index.html
