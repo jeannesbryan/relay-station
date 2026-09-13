@@ -4,12 +4,114 @@ Single source of truth for the release history. Newest first.
 
 | Version | Codename | Type |
 |---|---|---|
+| [8.1.1](#811--courier) | Courier | Test blindspot |
 | [8.1.0](#810--courier) | Courier | Store-and-forward, and one source of truth |
 | [8.0.4](#804--aegis) | Aegis | The fleet reports itself |
 | [8.0.3](#803--aegis) | Aegis | Resilience |
 | [8.0.2](#802--aegis) | Aegis | UI correctness |
 | [8.0.1](#801--aegis) | Aegis | Hotfix |
 | [8.0.0](#800--aegis) | Aegis | Security & architecture overhaul |
+
+---
+
+## 8.1.1 — COURIER
+
+```
+> APPLYING_PATCH_8.1.1...
+> SCOPE: A DEFECT I INTRODUCED IN 8.1.0, AND THE TEST THAT MISSED IT
+> DB_MIGRATION: NONE — the 8.1.0 outbox migration is unchanged
+> STATUS: STABLE - replaces 8.1.0
+```
+
+A patch for something I broke, and for the reason it was not caught. The second
+half matters more than the first.
+
+### The defect
+
+When 8.1.0 moved the source label and the resonance count into
+`core/render.php`, `index.php` was made to call:
+
+```php
+relay_resonance_stats($db, $msg['id'], $current_local_url)
+```
+
+That variable does not exist on the public landing page, and never has. Its
+visitor is not the operator, so there is nothing about "me" to ask — the page
+only ever needed a number.
+
+PHP answers an undefined variable with `null`, so the page rendered and the
+count was still correct. Nothing visible was wrong. What was wrong is that
+**every single view of the public page wrote a line to the production error
+log**, and the log is not a place anyone looks by default:
+
+```
+PHP Warning: Undefined variable $current_local_url in index.php on line 159
+```
+
+It was found by reading the server's error log after deploying, not by any test.
+
+`relay_resonance_count()` now exists, so the question the page actually asks is
+expressible without inventing an answer.
+
+### Why no test caught it
+
+This is the part worth keeping.
+
+The smoke suite loaded all thirteen entry points against **an empty database**.
+Every page queried a table that did not exist, got nothing back, and skipped the
+`foreach` that renders a transmission — which is exactly where the bug lived.
+The suite reported `13 passed, 0 failed` and knew nothing whatsoever about the
+code path that was broken.
+
+It was measuring "does this file parse and run", and reporting it as "does this
+page work".
+
+Two changes:
+
+1. **The sandbox is seeded.** `installer/schema.sql` is applied and one local
+   and one incoming signal are inserted, so both halves of every render branch
+   are reachable — the source label, the acknowledge button, the relay button
+   and the media matrix all differ between those two rows. The schema file is
+   read rather than copied, so the test cannot drift away from the real shape.
+
+2. **Reads of undefined things are failures.** `Undefined variable`,
+   `Undefined array key`, `Undefined property` and array-offset-on-null now fail
+   the suite alongside fatals. The distinction: a fatal says *this endpoint is
+   broken*; an undefined read says *this code is lying about what it knows*. Only
+   the first was being checked.
+
+### Verification of the verification
+
+Pointed at the shipped 8.1.0 `index.php`, the updated suite reports:
+
+```
+FAIL  index.php    Undefined variable
+SMOKE: 12 passed, 1 failed
+```
+
+and passes on the corrected file. Both directions were run, so the guard is
+known to work rather than merely green — a test that has never been seen to fail
+is a test nobody has reason to trust.
+
+This is the same standard the render tests were held to in 8.1.0, where the
+attribute parser was pointed at the old markup to confirm it reported the
+injection.
+
+### Upgrade
+
+Nothing to migrate. If you are on 8.1.0, apply the files and reload; the
+`outbox` table from 8.1.0 is unchanged. The `sw.js` cache name moves to
+`relay-bunker-v8.1.1`, which is what makes an installed client pick the new
+assets up.
+
+### Verification
+
+- 280 assertions pass (markup 5, security 105, shield 8, media 37, radar 12,
+  render 55, outbox 45, smoke 13).
+- `php -l` clean across all 27 files; no database left in `data/`.
+- Deployed and confirmed against the live node: the public page's error-log
+  warning is gone, `version.json` reports 8.1.1, and the six library files stay
+  404 while the six handler endpoints stay 403.
 
 ---
 

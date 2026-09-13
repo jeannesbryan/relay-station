@@ -168,6 +168,17 @@ check('knows when I am one of them', $stats['mine'] === true);
 $other = relay_resonance_stats($db, 999, $me);
 check('a signal nobody acknowledged counts zero', $other['count'] === 0 && $other['mine'] === false);
 
+// The public landing page asks only for the number - its visitor is not the
+// operator, so there is no "mine" to ask about - and it must therefore not need
+// a local URL at all. v8.1.0 briefly had it pass a variable that page never
+// defined: the number came out right, so every test passed, and a warning was
+// written to the production log on every single view. The fix is that the
+// question the page actually asks is now expressible.
+check('a count can be taken without knowing who is asking',
+    relay_resonance_count($db, 4) === 2 && relay_resonance_count($db, 999) === 0,
+    relay_resonance_count($db, 4) . '/' . relay_resonance_count($db, 999));
+check('the standalone count agrees with the stats', relay_resonance_count($db, 4) === $stats['count']);
+
 // ---------------------------------------------------------------------------
 section('acknowledge target');
 

@@ -1,6 +1,6 @@
 <?php
 // ==========================================================================
-// 🛡️ RELAY STATION 8.1.0 — SECURITY BOOTSTRAP
+// 🛡️ RELAY STATION 8.1.1 — SECURITY BOOTSTRAP
 // ==========================================================================
 // Single place where session policy, CSRF, client-IP resolution, outbound-URL
 // validation and TLS-enforced HTTP are defined. Every endpoint includes this
@@ -574,7 +574,7 @@ function relay_curl_init($url, array $resolved = [])
     curl_setopt($ch, CURLOPT_MAXREDIRS, 0);
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
     curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_USERAGENT, 'RelayStation/8.1.0');
+    curl_setopt($ch, CURLOPT_USERAGENT, 'RelayStation/8.1.1');
 
     if (defined('CURLOPT_PROTOCOLS_STR')) {
         curl_setopt($ch, CURLOPT_PROTOCOLS_STR, 'https');

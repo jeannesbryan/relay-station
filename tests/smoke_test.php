@@ -1,6 +1,10 @@
 <?php
 // Smoke test: load every entry point in a sandboxed subprocess and confirm it
-// does not fatal.
+// does not fatal AND does not read anything undefined.
+//
+// The second half was added in v8.1.1. Checked for fatals only, this suite
+// passed on a build whose public page logged a warning on every view; see the
+// note on $undefined_markers below.
 //
 // WHY THIS EXISTS: `php -l` only checks syntax. It cannot see an undefined
 // function call, a wrong include path, or a function referenced before it is
@@ -30,6 +34,57 @@ foreach ([$sandbox . '/data', $sandbox . '/media', $sandboxSess] as $d) {
 }
 foreach ([$sandboxDb, $sandboxDb . '-wal', $sandboxDb . '-shm'] as $f) { @unlink($f); }
 
+/**
+ * Bring the sandbox up to a state where the pages actually do something.
+ *
+ * This is the difference between loading a file and exercising it. Without a
+ * schema every entry point queried a table that did not exist, got nothing
+ * back, and skipped the loop that renders a transmission - which is precisely
+ * where v8.1.0's undefined variable lived. The suite reported 13 clean loads
+ * and knew nothing about the code path that was broken.
+ *
+ * installer/schema.sql is the authority on the shape, so it is read rather than
+ * duplicated here; a schema change can then never drift away from this test.
+ */
+function smoke_seed(PDO $db, $schemaFile)
+{
+    if (!is_file($schemaFile)) { return false; }
+
+    // Strip comment lines, then split on ';'. Enough for this file, which is
+    // only CREATE TABLE / CREATE INDEX.
+    $sql = '';
+    foreach (explode("\n", (string) file_get_contents($schemaFile)) as $line) {
+        $trimmed = ltrim($line);
+        if ($trimmed === '' || strpos($trimmed, '--') === 0) { continue; }
+        $sql .= $line . "\n";
+    }
+    foreach (array_filter(array_map('trim', explode(';', $sql))) as $statement) {
+        $db->exec($statement);
+    }
+
+    // One local and one incoming signal, so both halves of every render branch
+    // are reachable: the label, the buttons and the media matrix all differ.
+    $ins = $db->prepare("INSERT INTO transmissions (content, visibility, is_remote, is_relay, origin_id, author_alias)
+                         VALUES (:c, 'public', :r, :y, :o, :a)");
+    $ins->execute([':c' => 'smoke local', ':r' => 0, ':y' => 0, ':o' => null, ':a' => 'LOCAL_COMMAND']);
+    $ins->execute([':c' => 'smoke incoming', ':r' => 1, ':y' => 0, ':o' => 'dna-smoke', ':a' => 'THEM@peer.example']);
+
+    return true;
+}
+
+$seeded = false;
+try {
+    $seedDb = new PDO('sqlite:' . $sandboxDb);
+    $seedDb->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $seeded = smoke_seed($seedDb, $ROOT . '/installer/schema.sql');
+    $seedDb = null;
+} catch (Throwable $e) {
+    echo "  NOTE  the sandbox could not be seeded ({$e->getMessage()}); pages will not be exercised\n";
+}
+if (!$seeded) {
+    echo "  NOTE  installer/schema.sql was not found, so this run only proves the files load\n";
+}
+
 // name => superglobals to simulate
 $cases = [
     'index.php'               => ['GET' => []],
@@ -58,6 +113,27 @@ $fatal_markers = [
     'require_once(): Failed opening',
     'require(): Failed opening',
     'include(): Failed opening',
+];
+
+// Markers that mean the code read something that does not exist.
+//
+// These are warnings rather than fatals, and that is exactly why they used to
+// pass: a green run only ever proved that nothing fatal happened. v8.1.0
+// shipped an index.php that named a variable it never defined - every single
+// view of the public page wrote a line to the production error log, every test
+// in this suite passed, and the only thing that noticed was the server. PHP
+// hands back null for an undefined variable, so the page still rendered and the
+// count was still right, which is what made it invisible.
+//
+// Kept separate from the fatal list because the two mean different things: a
+// fatal is "this endpoint is broken", an undefined read is "this code is lying
+// about what it knows".
+$undefined_markers = [
+    'Undefined variable',
+    'Undefined array key',
+    'Undefined property',
+    'Trying to access array offset on value of type null',
+    'Trying to access array offset on null',
 ];
 
 $pass = 0; $fail = 0;
@@ -115,10 +191,17 @@ foreach ($cases as $rel => $sim) {
     foreach ($fatal_markers as $m) {
         if (stripos($out, $m) !== false) { $hit = $m; break; }
     }
+    if ($hit === null) {
+        foreach ($undefined_markers as $m) {
+            if (stripos($out, $m) !== false) { $hit = $m; break; }
+        }
+    }
     if ($hit === null && stripos($out, 'SMOKE_FATAL') !== false) { $hit = 'shutdown-time fatal'; }
 
-    // Notices about missing tables are acceptable: the schema is created by the
-    // installer, which is not run here. A fatal is not.
+    // Notices about the schema are acceptable: tables are created by the
+    // installer, which is not run here, so "no such table" is an artefact of
+    // this sandbox and not a defect. A fatal, or a read of something undefined,
+    // is neither.
     if ($hit === null) {
         $pass++;
         printf("  PASS  %-26s loads clean\n", $rel);

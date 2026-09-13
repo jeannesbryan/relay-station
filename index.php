@@ -58,7 +58,7 @@ try {
             $src_label = relay_source_label($msg);
 
             $img = '';
-            $res_count = relay_resonance_stats($db, $msg['id'], $current_local_url)['count'];
+            $res_count = relay_resonance_count($db, $msg['id']);
 
             // 🗄️ [ V8.1 ] Shared media matrix (core/render.php).
             $img = relay_media_matrix($msg['media_url'] ?? null, 'Secure Media');
@@ -156,7 +156,7 @@ try {
                                     // [ V8.1 ] Shared render layer (core/render.php).
                                     $author = relay_author_display($msg, 'LOCAL_COMMAND');
                                     $src_label = relay_source_label($msg);
-                                    $res_count = relay_resonance_stats($db, $msg['id'], $current_local_url)['count'];
+                                    $res_count = relay_resonance_count($db, $msg['id']);
                                 ?>
                                 <div class="t-card mb-3 p-3 transmission-card" data-id="<?php echo $msg['id']; ?>">
                                     <div class="t-bubble-meta t-border-bottom pb-2 mb-2">

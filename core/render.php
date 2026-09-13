@@ -129,20 +129,35 @@ function relay_can_resonate(array $msg)
 }
 
 /**
+ * How many times a signal has been acknowledged, without asking who did it.
+ *
+ * The public landing page shows the number and has no notion of "me" - its
+ * visitor is not the operator - so there is nothing to ask about a reactor.
+ * v8.1.0 briefly made that page call relay_resonance_stats() with a local-URL
+ * variable it never had, which produced a warning on every page view; the
+ * count was still right, which is exactly why it survived a green test run.
+ * This function exists so the question the page actually asks is expressible.
+ */
+function relay_resonance_count(PDO $db, $post_id)
+{
+    $stmt = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ?");
+    $stmt->execute([$post_id]);
+
+    return (int) $stmt->fetchColumn();
+}
+
+/**
  * How many times a signal has been acknowledged, and whether I am one of them.
  *
  * @return array{count: int, mine: bool}
  */
 function relay_resonance_stats(PDO $db, $post_id, $local_url)
 {
-    $stmt_count = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ?");
-    $stmt_count->execute([$post_id]);
-
     $stmt_mine = $db->prepare("SELECT COUNT(*) FROM signal_resonance WHERE post_id = ? AND reactor_url = ?");
     $stmt_mine->execute([$post_id, $local_url]);
 
     return [
-        'count' => (int) $stmt_count->fetchColumn(),
+        'count' => relay_resonance_count($db, $post_id),
         'mine'  => ((int) $stmt_mine->fetchColumn()) > 0,
     ];
 }
