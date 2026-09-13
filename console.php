@@ -528,11 +528,19 @@ try {
 
         $ping_data = '';
         if ($lighthouse === '1') {
+            // [ V8.0.4 ] Report the software version alongside the station
+            // details. The lighthouse is the only place that sees the whole
+            // fleet, so this is the one point where "what is actually deployed
+            // out there" can be observed - with no station contacting a third
+            // party. It is plain data about the software, carries nothing about
+            // the operator, and means the landing page never has to be
+            // hand-edited to show a version again.
             $ping_data = json_encode([
                 'action' => 'ping',
                 'planet_url' => $current_local_url,
                 'station_name' => $name,
-                'station_bio' => $bio
+                'station_bio' => $bio,
+                'version' => $station_version
             ]);
         } else {
             // [ V8.0 ] Opt-out: stop reporting in. Send nothing.

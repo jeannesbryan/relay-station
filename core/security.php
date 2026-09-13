@@ -1,6 +1,6 @@
 <?php
 // ==========================================================================
-// 🛡️ RELAY STATION 8.0.3 — SECURITY BOOTSTRAP
+// 🛡️ RELAY STATION 8.0.4 — SECURITY BOOTSTRAP
 // ==========================================================================
 // Single place where session policy, CSRF, client-IP resolution, outbound-URL
 // validation and TLS-enforced HTTP are defined. Every endpoint includes this

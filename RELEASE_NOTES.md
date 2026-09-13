@@ -4,10 +4,129 @@ Single source of truth for the release history. Newest first.
 
 | Version | Codename | Type |
 |---|---|---|
+| [8.0.4](#804--aegis) | Aegis | The fleet reports itself |
 | [8.0.3](#803--aegis) | Aegis | Resilience |
 | [8.0.2](#802--aegis) | Aegis | UI correctness |
 | [8.0.1](#801--aegis) | Aegis | Hotfix |
 | [8.0.0](#800--aegis) | Aegis | Security & architecture overhaul |
+
+---
+
+## 8.0.4 — AEGIS
+
+```
+> APPLYING_PATCH_8.0.4...
+> SCOPE: FLEET VERSION REPORTING (spans relay-station + relay-lighthouse)
+> DB_MIGRATION: AUTOMATIC (lighthouse adds a column on demand)
+> STATUS: STABLE
+```
+
+The lighthouse landing page no longer states a hand-typed release number. It
+reports what the fleet is actually running.
+
+### Why the number was wrong before
+
+The page used to fetch the newest tag from `api.github.com`. That was removed
+deliberately — it put a visitor's IP into a third-party request on a page whose
+entire argument is that a node should beacon to nobody — and replaced with a
+static string. The static string then went stale, which is what static strings
+do: it still said `V8.0` two releases later.
+
+Every option that reintroduces a third-party call has the same problem as the
+original. So the number now comes from the one party that already knows: **the
+lighthouse, which every station already reports to.**
+
+### How it works
+
+```
+station registers  ──▶  api_register.php   stores it in the registry
+                                              │
+landing page  ◀──  api_directory.php  ◀───────┘
+                    returns version per node
+                    + fleet_version (the highest reported)
+```
+
+A station reports its version in the same registration payload it already
+sends. The directory response gained `version` per node and a top-level
+`fleet_version`. The page renders `fleet_version` and shows each station's own
+version on its card, so a lagging node is visible at a glance.
+
+Same origin throughout. **No third-party request, from anyone.** And nothing to
+remember to edit when a release goes out.
+
+### What it does *not* claim
+
+`fleet_version` is the newest version any registered station has reported — it
+is a statement about the fleet, not about what has been published. The page
+labels it `Fleet Release` for that reason. When nothing has reported a version
+it says `not reported`, not `scanning...` forever.
+
+### The hub tolerates hubs that predate this
+
+The hub has no migration script of its own — its setup file is a run-once
+installer that is deleted after use, and re-running it would refuse. So the
+write path **adds the column on demand** the first time it is needed, and the
+read path falls back to the pre-8.0.4 query if the column is not there yet. No
+hub operator has to do anything.
+
+An older station that reports no version is still listed, and a registration
+without a version never erases one another registration recorded.
+
+### 🔒 Untrusted input
+
+The version arrives on a public, unauthenticated endpoint, so it is treated as
+such: length-capped at 32 characters, restricted to a version-string character
+set, and rejected outright otherwise. A leading `v` is normalised away so the
+directory cannot render `vv8.0.4`.
+
+### 🔬 Verification
+
+`relay-lighthouse` gained its first tests. `tests/version_test.php` runs against
+**two** hubs — one with the new schema, one with the schema as it was before —
+and covers validation, the self-healing migration and the fleet tally:
+**19 passed, 0 failed.** CI added to both repositories.
+
+Verified in a browser against a hub holding stations at different versions
+(including one that reports nothing):
+
+| Station | Card shows |
+|---|---|
+| reports `8.0.2` | `v8.0.2` + `[ ONLINE ]` |
+| reports nothing | `[ ONLINE ]` — no badge |
+| *(header)* | `Fleet Release: v8.0.2` |
+
+And with an empty directory: `Fleet Release: not reported`.
+
+### 🪤 Two mistakes worth recording
+
+Both were caught by exercising the code rather than reading it, and both are
+now pinned by the test:
+
+1. The self-healing migration matched only SQLite's `no such column` wording.
+   That is what **SELECT** reports; an **INSERT** says `table registry has no
+   column named version`. The migration looked correct and silently never ran.
+2. PDO's SQLite driver uses **native prepares**, so an unknown column is raised
+   by `prepare()`, not `execute()`. A `try` block around `execute()` alone
+   catches nothing — and looks entirely reasonable.
+
+### 📦 Upgrading
+
+- Replace the application files. **Do not overwrite `data/` or `media/`.**
+- **No database migration to run.** `installer/upgrade_db.php` is not needed
+  for this release. The lighthouse migrates itself.
+- `sw.js` cache name is bumped to `relay-bunker-v8.0.4`.
+- The lighthouse side ships separately: `api_register.php`, `api_directory.php`,
+  `setup_lighthouse.php` and `index.html` in the `relay-lighthouse` repository.
+- Source files changed here: `console.php`, `version.json`, `sw.js`,
+  `core/security.php`.
+
+### 📋 Limitation, stated plainly
+
+The version is reported **when the station registers**, which happens when its
+settings are saved. A station that is upgraded but whose settings are never
+touched will keep showing its previous version until the next save. The page is
+therefore honest about the last time each station checked in, not a live
+inventory.
 
 ---
 
